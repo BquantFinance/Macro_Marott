@@ -161,7 +161,7 @@ def calculate_butterfly(df, short_col, mid_col, long_col):
     """
     if all(col in df.columns for col in [short_col, mid_col, long_col]):
         butterfly = 2 * df[mid_col] - df[short_col] - df[long_col]
-        return butterfly * 100  # Convertir a basis points
+        return butterfly * 100
     return None
 
 def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=1.0):
@@ -431,7 +431,6 @@ def create_curve_explanation_chart():
         horizontal_spacing=0.15
     )
     
-    # Crear curvas con forma más realista
     x = np.linspace(0, 10, 100)
     
     # Bull Flattening: 2Y sube poco, 10Y baja mucho
@@ -449,7 +448,6 @@ def create_curve_explanation_chart():
         showlegend=False, name='Final'
     ), row=1, col=1)
     
-    # Añadir flechas con anotaciones
     fig.add_annotation(x=1, y=2.0, ax=1, ay=2.3,
                       xref='x1', yref='y1', axref='x1', ayref='y1',
                       showarrow=True, arrowhead=2, arrowsize=1.5, arrowwidth=3,
@@ -734,22 +732,35 @@ def main():
                 )
                 st.plotly_chart(fig, use_container_width=True)
             
-            col1, col2 = st.columns(2)
-            
-            with col1:
+            # Solo mostrar NFP si hay datos disponibles
+            if 'PAYEMS' in data.columns:
                 nfp_chg = data['PAYEMS'].diff().dropna()
-                
                 if not nfp_chg.empty and len(nfp_chg) > 0:
-                    fig = create_bar_chart(
-                        pd.DataFrame({'NFP': nfp_chg}).tail(60),
-                        "Cambios Mensuales NFP", "Miles",
-                        color='#10b981'
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        fig = create_bar_chart(
+                            pd.DataFrame({'NFP': nfp_chg}).tail(60),
+                            "Cambios Mensuales NFP", "Miles",
+                            color='#10b981'
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    with col2:
+                        fig = create_area_chart(
+                            data[['ICSA']].dropna(),
+                            "Solicitudes Iniciales Desempleo", "Miles",
+                            color='#ef4444'
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                else:
+                    fig = create_area_chart(
+                        data[['ICSA']].dropna(),
+                        "Solicitudes Iniciales Desempleo", "Miles",
+                        color='#ef4444'
                     )
                     st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.info("Datos de cambios NFP no disponibles")
-            
-            with col2:
+            else:
                 fig = create_area_chart(
                     data[['ICSA']].dropna(),
                     "Solicitudes Iniciales Desempleo", "Miles",
@@ -909,8 +920,8 @@ def main():
             **Leyenda:**
             - **Línea sólida gris:** Curva inicial
             - **Línea punteada naranja:** Curva final
-            - **🟢 Tasas bajando** = Bull (bueno para bonos)
-            - **🔴 Tasas subiendo** = Bear (malo para bonos)
+            - **🟢 Flechas verdes:** Tasas bajando (Bull)
+            - **🔴 Flechas rojas:** Tasas subiendo (Bear)
             
             **Interpretación:**
             - **Flattening:** El spread se reduce (curva se aplana)
@@ -1009,14 +1020,45 @@ def main():
                     
                     with col1:
                         fig = go.Figure()
+                        
+                        # Separar valores positivos y negativos para colorear
+                        butterfly_pos = butterfly_df['Butterfly 2-5-10'].copy()
+                        butterfly_neg = butterfly_df['Butterfly 2-5-10'].copy()
+                        butterfly_pos[butterfly_pos < 0] = 0
+                        butterfly_neg[butterfly_neg > 0] = 0
+                        
+                        # Área positiva (convexa) en rojo
+                        fig.add_trace(go.Scatter(
+                            x=butterfly_df.index,
+                            y=butterfly_pos,
+                            mode='lines',
+                            line=dict(color='#ef4444', width=0),
+                            fill='tozeroy',
+                            fillcolor='rgba(239, 68, 68, 0.3)',
+                            name='Convexa',
+                            showlegend=True
+                        ))
+                        
+                        # Área negativa (cóncava) en verde
+                        fig.add_trace(go.Scatter(
+                            x=butterfly_df.index,
+                            y=butterfly_neg,
+                            mode='lines',
+                            line=dict(color='#10b981', width=0),
+                            fill='tozeroy',
+                            fillcolor='rgba(16, 185, 129, 0.3)',
+                            name='Cóncava',
+                            showlegend=True
+                        ))
+                        
+                        # Línea principal
                         fig.add_trace(go.Scatter(
                             x=butterfly_df.index,
                             y=butterfly_df['Butterfly 2-5-10'],
                             mode='lines',
                             line=dict(color='#8b5cf6', width=2),
-                            fill='tozeroy',
-                            fillcolor='rgba(139, 92, 246, 0.2)',
-                            name='Butterfly'
+                            name='Butterfly',
+                            showlegend=False
                         ))
                         
                         fig.add_hline(y=0, line_dash="dash", line_color="#475569", 
@@ -1032,6 +1074,7 @@ def main():
                             font=dict(color='#e2e8f0', size=11),
                             xaxis=dict(showgrid=True, gridcolor='#334155'),
                             yaxis=dict(showgrid=True, gridcolor='#334155'),
+                            legend=dict(bgcolor='#1e293b', bordercolor='#334155', borderwidth=1),
                             height=400
                         )
                         
@@ -1159,8 +1202,8 @@ def main():
             
             **Fórmula:** Butterfly = 2×Yield₅ - Yield₂ - Yield₁₀
             
-            - **Negativo (<0):** Curva cóncava - 5Y más bajo que promedio
-            - **Positivo (>0):** Curva convexa - 5Y más alto que promedio
+            - **Negativo (<0):** Curva cóncava - 5Y más bajo que promedio (🟢 Verde)
+            - **Positivo (>0):** Curva convexa - 5Y más alto que promedio (🔴 Rojo)
             - **Steepener Twist:** Butterfly se vuelve más negativo
             - **Flattener Twist:** Butterfly se vuelve más positivo
             """)
