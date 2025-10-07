@@ -5,7 +5,6 @@ from plotly.subplots import make_subplots
 from pandas_datareader import data as web
 from datetime import datetime, timedelta
 import numpy as np
-from scipy import stats
 
 st.set_page_config(
     page_title="FRED Análisis Económico",
@@ -140,45 +139,122 @@ def get_last_valid(df, column):
         return None
     return series.iloc[-1]
 
-def create_scatter_with_regression(df, x_col, y_col, title, x_title, y_title, color='#f59e0b'):
-    if df is None or df.empty or x_col not in df.columns or y_col not in df.columns:
-        return create_empty_chart(title)
+def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=1.0):
+    """Calcular métricas de curva de rendimiento"""
+    # Calcular spread
+    df['curve'] = (df[back_col] - df[front_col]) * 100
+    df['curve_smooth'] = df['curve'].rolling(window=2).mean()
     
-    valid_data = df[[x_col, y_col]].dropna()
-    if len(valid_data) < 2:
-        return create_empty_chart(title)
+    # Valores lookback
+    df['curve_lookback'] = df['curve'].shift(lookback)
+    df['front_lookback'] = df[front_col].shift(lookback)
+    df['back_lookback'] = df[back_col].shift(lookback)
     
-    x = valid_data[x_col].values
-    y = valid_data[y_col].values
+    # Clasificar movimientos
+    df['bullsteepener'] = np.where(
+        (df['curve'] > df['curve_lookback'] + threshold) &
+        (df[front_col] < df['front_lookback']) &
+        (df[back_col] < df['back_lookback']),
+        df['curve'], 0
+    )
     
-    slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
-    line_x = np.linspace(x.min(), x.max(), 100)
-    line_y = slope * line_x + intercept
+    df['bearsteepener'] = np.where(
+        (df['curve'] > df['curve_lookback'] + threshold) &
+        (df[front_col] > df['front_lookback']) &
+        (df[back_col] > df['back_lookback']),
+        df['curve'], 0
+    )
     
+    df['bullflattener'] = np.where(
+        (df['curve'] < df['curve_lookback'] - threshold) &
+        (df[front_col] < df['front_lookback']) &
+        (df[back_col] < df['back_lookback']),
+        df['curve'], 0
+    )
+    
+    df['bearflattener'] = np.where(
+        (df['curve'] < df['curve_lookback'] - threshold) &
+        (df[front_col] > df['front_lookback']) &
+        (df[back_col] > df['back_lookback']),
+        df['curve'], 0
+    )
+    
+    df['steepenertwist'] = np.where(
+        (df['curve'] > df['curve_lookback'] + threshold) &
+        ((df[front_col] > df['front_lookback']) != (df[back_col] > df['back_lookback'])),
+        df['curve'], 0
+    )
+    
+    df['flattenertwist'] = np.where(
+        (df['curve'] < df['curve_lookback'] - threshold) &
+        ((df[front_col] > df['front_lookback']) != (df[back_col] > df['back_lookback'])),
+        df['curve'], 0
+    )
+    
+    return df
+
+def create_curve_behavior_chart(df, title, front_leg, back_leg):
+    """Crear gráfico de comportamiento de curva estilo Bloomberg"""
     fig = go.Figure()
     
-    fig.add_trace(go.Scatter(
-        x=x, y=y, mode='markers', name='Datos',
-        marker=dict(size=8, color=color, opacity=0.6)
-    ))
+    # Colores estilo Bloomberg
+    colors = {
+        'bullsteepener': '#00D000',
+        'bearsteepener': '#D00000',
+        'steepenertwist': '#FF00FF',
+        'bullflattener': '#00D0D0',
+        'bearflattener': '#D0D000',
+        'flattenertwist': '#8B008B'
+    }
     
-    fig.add_trace(go.Scatter(
-        x=line_x, y=line_y, mode='lines',
-        name=f'R²={r_value**2:.4f}',
-        line=dict(color='#ef4444', width=2)
-    ))
+    labels = {
+        'bullsteepener': 'Bull Steepener',
+        'bearsteepener': 'Bear Steepener',
+        'steepenertwist': 'Steepener Twist',
+        'bullflattener': 'Bull Flattener',
+        'bearflattener': 'Bear Flattener',
+        'flattenertwist': 'Flattener Twist'
+    }
+    
+    # Agregar barras
+    for indicator, color in colors.items():
+        if indicator in df.columns:
+            fig.add_trace(go.Bar(
+                x=df.index,
+                y=df[indicator],
+                name=labels[indicator],
+                marker_color=color,
+                opacity=0.95
+            ))
+    
+    # Agregar línea de curva
+    if 'curve_smooth' in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df['curve_smooth'],
+            name='Curve',
+            line=dict(color='white', width=2),
+            mode='lines'
+        ))
+    
+    front_display = '3M' if front_leg == 'DGS3MO' else front_leg.replace('DGS', '') + 'Y'
+    back_display = back_leg.replace('DGS', '') + 'Y'
     
     fig.update_layout(
-        title=dict(text=f"{title}<br><sub>R² = {r_value**2:.4f}</sub>", 
-                  font=dict(size=16, color='#06b6d4')),
-        xaxis_title=x_title, yaxis_title=y_title,
-        plot_bgcolor='#0f172a', paper_bgcolor='#1e293b',
+        title=dict(text=f"{title}<br><sub>{front_display}-{back_display} Spread</sub>", 
+                  font=dict(size=18, color='#06b6d4')),
+        xaxis_title="Fecha",
+        yaxis_title="Basis Points",
+        plot_bgcolor='#0f172a',
+        paper_bgcolor='#1e293b',
         font=dict(color='#e2e8f0', size=11),
-        xaxis=dict(showgrid=True, gridcolor='#334155'),
-        yaxis=dict(showgrid=True, gridcolor='#334155'),
-        legend=dict(bgcolor='#1e293b'),
-        height=400
+        xaxis=dict(showgrid=True, gridcolor='#1a1a1a'),
+        yaxis=dict(showgrid=True, gridcolor='#1a1a1a', range=[-160, 400]),
+        barmode='stack',
+        legend=dict(bgcolor='#1e293b', bordercolor='#334155', borderwidth=1),
+        height=500
     )
+    
     return fig
 
 def create_bar_chart(df, title, y_title, color='#f59e0b'):
@@ -196,7 +272,7 @@ def create_bar_chart(df, title, y_title, color='#f59e0b'):
         plot_bgcolor='#0f172a', paper_bgcolor='#1e293b',
         font=dict(color='#e2e8f0', size=11),
         xaxis=dict(showgrid=False),
-        yaxis=dict(showgrid=True, gridcolor='#334155'),
+        yaxis=dict(showgrid=True, gridcolor='#334155', zeroline=True, zerolinecolor='#475569'),
         height=400
     )
     return fig
@@ -214,6 +290,30 @@ def create_line_chart(df, title, y_title, colors=None):
             fig.add_trace(go.Scatter(
                 x=df.index, y=df[col], name=col, mode='lines',
                 line=dict(width=2, color=colors[i % len(colors)])
+            ))
+    
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=16, color='#06b6d4')),
+        xaxis_title="Fecha", yaxis_title=y_title,
+        plot_bgcolor='#0f172a', paper_bgcolor='#1e293b',
+        font=dict(color='#e2e8f0', size=11),
+        xaxis=dict(showgrid=True, gridcolor='#334155'),
+        yaxis=dict(showgrid=True, gridcolor='#334155'),
+        height=400
+    )
+    return fig
+
+def create_area_chart(df, title, y_title, color='#06b6d4'):
+    if df is None or df.empty:
+        return create_empty_chart(title)
+    
+    fig = go.Figure()
+    for col in df.columns:
+        if df[col].notna().any():
+            fig.add_trace(go.Scatter(
+                x=df.index, y=df[col], name=col, mode='lines',
+                fill='tozeroy', line=dict(width=2, color=color),
+                fillcolor='rgba(6, 182, 212, 0.3)'
             ))
     
     fig.update_layout(
@@ -261,6 +361,61 @@ def create_dual_axis_chart(df, col1, col2, title, y1_title, y2_title):
     
     return fig
 
+def create_combo_chart(df, bar_cols, line_cols, title, y1_title, y2_title=None):
+    """Crear gráfico combinado barras + líneas"""
+    if df is None or df.empty:
+        return create_empty_chart(title)
+    
+    if y2_title:
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+    else:
+        fig = go.Figure()
+    
+    colors_bar = ['#f59e0b', '#ef4444']
+    colors_line = ['#06b6d4', '#8b5cf6', '#10b981']
+    
+    # Barras
+    for i, col in enumerate(bar_cols):
+        if col in df.columns and df[col].notna().any():
+            if y2_title:
+                fig.add_trace(
+                    go.Bar(x=df.index, y=df[col], name=col, 
+                          marker_color=colors_bar[i % len(colors_bar)]),
+                    secondary_y=False
+                )
+            else:
+                fig.add_trace(go.Bar(x=df.index, y=df[col], name=col,
+                                    marker_color=colors_bar[i % len(colors_bar)]))
+    
+    # Líneas
+    for i, col in enumerate(line_cols):
+        if col in df.columns and df[col].notna().any():
+            if y2_title:
+                fig.add_trace(
+                    go.Scatter(x=df.index, y=df[col], name=col, mode='lines',
+                              line=dict(width=3, color=colors_line[i % len(colors_line)])),
+                    secondary_y=True
+                )
+            else:
+                fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col, mode='lines',
+                                        line=dict(width=3, color=colors_line[i % len(colors_line)])))
+    
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=16, color='#06b6d4')),
+        plot_bgcolor='#0f172a', paper_bgcolor='#1e293b',
+        font=dict(color='#e2e8f0', size=11),
+        xaxis=dict(showgrid=False, gridcolor='#334155'),
+        height=450
+    )
+    
+    if y2_title:
+        fig.update_yaxes(title_text=y1_title, secondary_y=False, showgrid=True, gridcolor='#334155')
+        fig.update_yaxes(title_text=y2_title, secondary_y=True, showgrid=False)
+    else:
+        fig.update_yaxes(title_text=y1_title, showgrid=True, gridcolor='#334155')
+    
+    return fig
+
 def create_empty_chart(title):
     fig = go.Figure()
     fig.add_annotation(
@@ -275,7 +430,6 @@ def create_empty_chart(title):
     return fig
 
 def info_box(title, content):
-    """Crear caja de información"""
     st.markdown(f"""
     <div style='background: linear-gradient(135deg, #1e293b 0%, #334155 100%); 
                 padding: 15px; border-radius: 10px; border-left: 4px solid #06b6d4; margin: 10px 0;'>
@@ -325,8 +479,8 @@ def main():
         "💰 Política Monetaria",
         "📈 Inflación & Laboral", 
         "🏠 Sector Inmobiliario",
-        "📊 Curvas & Correlaciones",
-        "📚 Guía de Interpretación"
+        "📊 Análisis de Curvas",
+        "📚 Guía"
     ])
     
     # TAB 1: POLÍTICA MONETARIA
@@ -335,8 +489,7 @@ def main():
         
         with st.expander("ℹ️ ¿Qué muestra esta sección?"):
             info_box("Política Monetaria", 
-                    "Análisis de las tasas de interés controladas por la Reserva Federal y los rendimientos de bonos del Tesoro. "
-                    "Estos indicadores son fundamentales para entender el costo del dinero en la economía y las expectativas de inflación.")
+                    "Análisis de las tasas de interés controladas por la Reserva Federal y los rendimientos de bonos del Tesoro.")
         
         monetary_series = {
             'FEDFUNDS': 'FEDFUNDS', 'DGS2': 'DGS2', 'DGS10': 'DGS10',
@@ -361,7 +514,6 @@ def main():
                 st.metric("Inflación Esperada 5A", safe_value(get_last_valid(data, 'T5YIE'), "{:.2f}%"))
             
             st.markdown("---")
-            st.markdown("### 📈 Evolución de Tasas de Interés")
             
             col1, col2 = st.columns(2)
             
@@ -375,7 +527,7 @@ def main():
             with col2:
                 fig = create_line_chart(
                     data[['T10Y2Y']].dropna(),
-                    "Spread 10Y-2Y (Indicador de Recesión)", "Spread (%)",
+                    "Spread 10Y-2Y", "Spread (%)",
                     colors=['#8b5cf6']
                 )
                 st.plotly_chart(fig, use_container_width=True)
@@ -385,55 +537,51 @@ def main():
         st.markdown("## 📈 Inflación y Mercado Laboral")
         
         with st.expander("ℹ️ ¿Qué muestra esta sección?"):
-            info_box("Inflación", 
-                    "Mide el aumento de precios en la economía. El IPC (Índice de Precios al Consumidor) y el PCE "
-                    "(Gasto de Consumo Personal) son las principales métricas que la Fed monitorea.")
-            info_box("Mercado Laboral", 
-                    "Indicadores clave: tasa de desempleo, nóminas no agrícolas (NFP), salarios y vacantes (JOLTS). "
-                    "Un mercado laboral fuerte puede presionar la inflación al alza.")
+            info_box("Inflación & Empleo", 
+                    "Indicadores clave de precios y mercado laboral que la Fed monitorea para sus decisiones de política monetaria.")
         
         combined_series = {
-            'CPIAUCSL': 'CPIAUCSL', 'CPILFESL': 'CPILFESL',
+            'CPIAUCSL': 'CPIAUCSL', 'CPILFESL': 'CPILFESL', 'PCEPI': 'PCEPI',
             'UNRATE': 'UNRATE', 'PAYEMS': 'PAYEMS',
-            'CES0500000003': 'CES0500000003', 'JTSJOL': 'JTSJOL'
+            'CES0500000003': 'CES0500000003', 'JTSJOL': 'JTSJOL',
+            'ICSA': 'ICSA', 'JTSQUL': 'JTSQUL', 'JTSLDL': 'JTSLDL'
         }
         
         with st.spinner('Cargando datos...'):
             data = fetch_multiple_series(combined_series, start_date, end_date)
         
         if data is not None and not data.empty:
-            # Métricas principales
+            # Métricas
             col1, col2, col3, col4 = st.columns(4)
             
-            yoy = data[['CPIAUCSL', 'CPILFESL']].pct_change(12) * 100
+            yoy = data[['CPIAUCSL', 'CPILFESL', 'PCEPI']].pct_change(12) * 100
             
             with col1:
                 st.metric("IPC YoY", safe_value(get_last_valid(yoy, 'CPIAUCSL'), "{:.2f}%"))
             with col2:
-                st.metric("IPC Subyacente YoY", safe_value(get_last_valid(yoy, 'CPILFESL'), "{:.2f}%"))
+                st.metric("IPC Core YoY", safe_value(get_last_valid(yoy, 'CPILFESL'), "{:.2f}%"))
             with col3:
                 st.metric("Desempleo", safe_value(get_last_valid(data, 'UNRATE'), "{:.1f}%"))
             with col4:
                 st.metric("Nóminas", safe_value(get_last_valid(data, 'PAYEMS'), "{:.0f}K"))
             
             st.markdown("---")
-            st.markdown("### 💹 Inflación - Cambios Interanuales")
+            st.markdown("### 💹 Inflación")
             
             col1, col2 = st.columns(2)
             
             with col1:
                 fig = create_line_chart(
                     yoy.dropna(),
-                    "IPC - Evolución YoY", "% YoY",
-                    colors=['#f59e0b', '#ef4444']
+                    "Inflación YoY", "% YoY",
+                    colors=['#f59e0b', '#ef4444', '#ec4899']
                 )
                 st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                # Cambios mensuales
-                mom = data['CPIAUCSL'].pct_change(1) * 100
+                mom = data[['CPIAUCSL', 'CPILFESL']].pct_change(1) * 100
                 fig = create_bar_chart(
-                    pd.DataFrame({'IPC MoM': mom}).dropna().tail(60),
+                    mom[['CPIAUCSL']].dropna().tail(60),
                     "IPC - Cambios Mensuales", "% MoM"
                 )
                 st.plotly_chart(fig, use_container_width=True)
@@ -443,74 +591,77 @@ def main():
             col1, col2 = st.columns(2)
             
             with col1:
-                fig = create_line_chart(
-                    data[['UNRATE', 'JTSJOL']].dropna(how='all'),
-                    "Desempleo y Vacantes JOLTS", "Miles / %",
-                    colors=['#8b5cf6', '#06b6d4']
+                fig = create_area_chart(
+                    data[['UNRATE']].dropna(),
+                    "Tasa de Desempleo", "%",
+                    color='#8b5cf6'
                 )
                 st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                nfp_chg = data['PAYEMS'].diff()
-                fig = create_bar_chart(
-                    pd.DataFrame({'NFP Cambio': nfp_chg}).dropna().tail(60),
-                    "Cambios Mensuales en Nóminas", "Miles",
-                    color='#10b981'
+                fig = create_area_chart(
+                    data[['JTSJOL']].dropna(),
+                    "Vacantes JOLTS", "Miles",
+                    color='#06b6d4'
                 )
                 st.plotly_chart(fig, use_container_width=True)
-            
-            st.markdown("### 🔗 Correlaciones")
             
             col1, col2 = st.columns(2)
             
             with col1:
-                scatter_data = pd.DataFrame({
-                    'UNRATE': data['UNRATE'],
-                    'CPI_YoY': yoy['CPIAUCSL']
-                }).dropna()
-                
-                fig = create_scatter_with_regression(
-                    scatter_data, 'UNRATE', 'CPI_YoY',
-                    "Desempleo vs Inflación", "Desempleo (%)", "IPC YoY (%)"
+                nfp_chg = data['PAYEMS'].diff()
+                fig = create_bar_chart(
+                    pd.DataFrame({'NFP': nfp_chg}).dropna().tail(60),
+                    "Cambios Mensuales NFP", "Miles",
+                    color='#10b981'
                 )
                 st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                if 'CES0500000003' in data.columns:
-                    scatter_data = pd.DataFrame({
-                        'Wage': data['CES0500000003'].pct_change(12) * 100,
-                        'CPI_YoY': yoy['CPIAUCSL']
-                    }).dropna()
-                    
-                    fig = create_scatter_with_regression(
-                        scatter_data, 'Wage', 'CPI_YoY',
-                        "Salarios vs Inflación", "Salarios YoY (%)", "IPC YoY (%)"
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
+                fig = create_area_chart(
+                    data[['ICSA']].dropna(),
+                    "Solicitudes Iniciales Desempleo", "Miles",
+                    color='#ef4444'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            st.markdown("### 📊 JOLTS - Dinámica Laboral")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = create_line_chart(
+                    data[['JTSQUL']].dropna(),
+                    "Renuncias JOLTS", "Miles",
+                    colors=['#f59e0b']
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                fig = create_line_chart(
+                    data[['JTSLDL']].dropna(),
+                    "Despidos JOLTS", "Miles",
+                    colors=['#ef4444']
+                )
+                st.plotly_chart(fig, use_container_width=True)
     
     # TAB 3: SECTOR INMOBILIARIO
     with tab3:
         st.markdown("## 🏠 Sector Inmobiliario")
         
         with st.expander("ℹ️ ¿Qué muestra esta sección?"):
-            info_box("Precios de Vivienda", 
-                    "Case-Shiller es el índice más importante de precios de vivienda en EE.UU. "
-                    "Mide la evolución de los precios en las principales áreas metropolitanas.")
-            info_box("Actividad de Construcción", 
-                    "Housing Starts (inicios de construcción) y Building Permits (permisos) son indicadores "
-                    "adelantados de la actividad económica y demanda de vivienda.")
-            info_box("Financiamiento", 
-                    "Las tasas hipotecarias determinan la asequibilidad de las viviendas. Tasas más altas "
-                    "reducen la demanda y pueden enfriar el mercado inmobiliario.")
+            info_box("Sector Inmobiliario", 
+                    "Precios de vivienda, actividad de construcción y financiamiento hipotecario.")
         
         re_series = {
             'CSUSHPISA': 'CSUSHPISA', 'HOUST': 'HOUST',
             'MORTGAGE30US': 'MORTGAGE30US', 'HSN1FNSA': 'HSN1FNSA',
             'PERMIT': 'PERMIT', 'MSPNHSUS': 'MSPNHSUS',
-            'EXHOSLUSM495S': 'EXHOSLUSM495S', 'DGS10': 'DGS10'
+            'EXHOSLUSM495S': 'EXHOSLUSM495S', 'DGS10': 'DGS10',
+            'USSTHPI': 'USSTHPI', 'PRRESCON': 'PRRESCON'
         }
         
-        with st.spinner('Cargando datos inmobiliarios...'):
+        with st.spinner('Cargando datos...'):
             data = fetch_multiple_series(re_series, start_date, end_date)
         
         if data is not None and not data.empty:
@@ -532,9 +683,9 @@ def main():
             
             with col1:
                 fig = create_line_chart(
-                    data[['CSUSHPISA']].dropna(),
-                    "Índice Case-Shiller", "Índice (2000=100)",
-                    colors=['#10b981']
+                    data[['CSUSHPISA', 'USSTHPI']].dropna(how='all'),
+                    "Índices de Precios", "Índice",
+                    colors=['#10b981', '#06b6d4']
                 )
                 st.plotly_chart(fig, use_container_width=True)
             
@@ -542,7 +693,7 @@ def main():
                 cs_yoy = data['CSUSHPISA'].pct_change(12) * 100
                 fig = create_line_chart(
                     pd.DataFrame({'CS YoY': cs_yoy}).dropna(),
-                    "Case-Shiller - Cambio Interanual", "% YoY",
+                    "Case-Shiller YoY", "% YoY",
                     colors=['#06b6d4']
                 )
                 st.plotly_chart(fig, use_container_width=True)
@@ -554,7 +705,7 @@ def main():
             with col1:
                 fig = create_line_chart(
                     data[['HOUST', 'PERMIT']].dropna(how='all'),
-                    "Inicios y Permisos de Construcción", "Miles (Anualizado)",
+                    "Inicios y Permisos", "Miles",
                     colors=['#06b6d4', '#8b5cf6']
                 )
                 st.plotly_chart(fig, use_container_width=True)
@@ -567,7 +718,7 @@ def main():
                 )
                 st.plotly_chart(fig, use_container_width=True)
             
-            st.markdown("### 📉 Impacto de Tasas de Interés")
+            st.markdown("### 💰 Tasas y Asequibilidad")
             
             col1, col2 = st.columns(2)
             
@@ -575,143 +726,134 @@ def main():
                 if 'HOUST' in data.columns and 'MORTGAGE30US' in data.columns:
                     fig = create_dual_axis_chart(
                         data, 'HOUST', 'MORTGAGE30US',
-                        "Housing Starts vs Tasa Hipotecaria",
+                        "Construcción vs Hipotecas",
                         "Starts (K)", "Tasa (%)"
                     )
                     st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                scatter_data = pd.DataFrame({
-                    'Mortgage': data['MORTGAGE30US'],
-                    'Sales': data['HSN1FNSA']
-                }).dropna()
-                
-                fig = create_scatter_with_regression(
-                    scatter_data, 'Mortgage', 'Sales',
-                    "Tasas Hipotecarias vs Ventas", "Tasa 30Y (%)", "Ventas (K)"
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            st.markdown("### 💵 Asequibilidad")
-            
-            if 'MSPNHSUS' in data.columns:
-                col1, col2 = st.columns(2)
-                
-                with col1:
+                if 'MSPNHSUS' in data.columns:
                     fig = create_line_chart(
                         data[['MSPNHSUS']].dropna(),
-                        "Precio Medio de Vivienda Nueva", "USD",
+                        "Precio Medio Vivienda Nueva", "USD",
                         colors=['#ec4899']
                     )
                     st.plotly_chart(fig, use_container_width=True)
-                
-                with col2:
-                    # Spread hipoteca vs 10Y
-                    if 'DGS10' in data.columns:
-                        spread = data['MORTGAGE30US'] - data['DGS10']
-                        fig = create_line_chart(
-                            pd.DataFrame({'Spread': spread}).dropna(),
-                            "Spread: Hipoteca 30Y - Tesoro 10Y", "% Puntos",
-                            colors=['#f59e0b']
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
+            
+            # Gasto en construcción
+            if 'PRRESCON' in data.columns:
+                st.markdown("### 🔨 Gasto en Construcción")
+                fig = create_area_chart(
+                    data[['PRRESCON']].dropna(),
+                    "Gasto en Construcción Residencial", "Millones USD",
+                    color='#3b82f6'
+                )
+                st.plotly_chart(fig, use_container_width=True)
     
-    # TAB 4: CURVAS & CORRELACIONES
+    # TAB 4: ANÁLISIS DE CURVAS
     with tab4:
-        st.markdown("## 📊 Análisis Avanzado")
+        st.markdown("## 📊 Análisis de Curvas de Rendimiento")
         
         with st.expander("ℹ️ ¿Qué muestra esta sección?"):
-            info_box("Curva de Rendimientos", 
-                    "La forma de la curva de rendimientos refleja las expectativas del mercado sobre crecimiento "
-                    "e inflación futura. Una curva invertida (10Y < 2Y) históricamente ha precedido recesiones.")
-            info_box("Análisis de Correlaciones", 
-                    "Los scatter plots muestran relaciones históricas entre variables económicas, útiles para "
-                    "entender cómo se mueven juntos diferentes indicadores.")
+            info_box("Comportamiento de Curva", 
+                    "Análisis avanzado de los movimientos de la curva de rendimientos. "
+                    "Bull/Bear Steepener/Flattener indican diferentes escenarios económicos y expectativas del mercado.")
         
-        advanced_series = {
-            'DGS2': 'DGS2', 'DGS10': 'DGS10', 'DGS30': 'DGS30',
-            'FEDFUNDS': 'FEDFUNDS', 'CPIAUCSL': 'CPIAUCSL',
-            'UNRATE': 'UNRATE', 'CSUSHPISA': 'CSUSHPISA'
+        st.markdown("### ⚙️ Configurar Análisis de Curva")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            front_leg = st.selectbox(
+                "Tenor Corto",
+                options=['DGS3MO', 'DGS2', 'DGS5'],
+                index=0,
+                format_func=lambda x: {'DGS3MO': '3 Meses', 'DGS2': '2 Años', 'DGS5': '5 Años'}[x]
+            )
+        
+        with col2:
+            back_leg = st.selectbox(
+                "Tenor Largo",
+                options=['DGS10', 'DGS30'],
+                index=1,
+                format_func=lambda x: {'DGS10': '10 Años', 'DGS30': '30 Años'}[x]
+            )
+        
+        with col3:
+            lookback = st.slider("Lookback (días)", 5, 30, 10)
+        
+        # Obtener datos de curva
+        curve_series = {
+            front_leg: front_leg,
+            back_leg: back_leg
         }
         
-        with st.spinner('Cargando datos...'):
-            data = fetch_multiple_series(advanced_series, start_date, end_date)
+        with st.spinner('Analizando curva de rendimiento...'):
+            curve_data = fetch_multiple_series(curve_series, start_date, end_date)
         
-        if data is not None and not data.empty:
-            st.markdown("### 📈 Curva de Rendimientos")
+        if curve_data is not None and not curve_data.empty:
+            # Calcular métricas
+            curve_data = calculate_curve_metrics(curve_data, front_leg, back_leg, lookback)
+            
+            # Gráfico principal de comportamiento
+            fig = create_curve_behavior_chart(curve_data, "Comportamiento de la Curva", front_leg, back_leg)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.markdown("### 📈 Análisis Complementario")
             
             col1, col2 = st.columns(2)
             
             with col1:
                 fig = create_line_chart(
-                    data[['DGS2', 'DGS10', 'DGS30']].dropna(how='all'),
-                    "Rendimientos del Tesoro", "Rendimiento (%)",
+                    curve_data[[front_leg, back_leg]].dropna(how='all'),
+                    "Rendimientos por Tenor", "Rendimiento (%)",
+                    colors=['#06b6d4', '#ec4899']
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                if 'curve' in curve_data.columns:
+                    fig = create_line_chart(
+                        pd.DataFrame({'Spread': curve_data['curve']/100}).dropna(),
+                        "Evolución del Spread", "Spread (%)",
+                        colors=['#8b5cf6']
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+        
+        st.markdown("### 📊 Curvas Históricas Adicionales")
+        
+        # Otros spreads importantes
+        other_series = {
+            'DGS2': 'DGS2',
+            'DGS10': 'DGS10',
+            'DGS30': 'DGS30',
+            'FEDFUNDS': 'FEDFUNDS'
+        }
+        
+        with st.spinner('Cargando spreads adicionales...'):
+            other_data = fetch_multiple_series(other_series, start_date, end_date)
+        
+        if other_data is not None and not other_data.empty:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = create_line_chart(
+                    other_data[['DGS2', 'DGS10', 'DGS30']].dropna(how='all'),
+                    "Principales Rendimientos del Tesoro", "Rendimiento (%)",
                     colors=['#06b6d4', '#8b5cf6', '#ec4899']
                 )
                 st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                spread = data['DGS10'] - data['DGS2']
+                spreads = pd.DataFrame({
+                    '10Y-2Y': other_data['DGS10'] - other_data['DGS2'],
+                    '30Y-10Y': other_data['DGS30'] - other_data['DGS10']
+                }).dropna()
+                
                 fig = create_line_chart(
-                    pd.DataFrame({'10Y-2Y': spread}).dropna(),
-                    "Spread 10Y-2Y", "Spread (%)",
-                    colors=['#f59e0b']
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            st.markdown("### 🔗 Matriz de Correlaciones")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                cpi_yoy = data['CPIAUCSL'].pct_change(12) * 100
-                scatter_data = pd.DataFrame({
-                    'Fed_Funds': data['FEDFUNDS'],
-                    'CPI_YoY': cpi_yoy
-                }).dropna()
-                
-                fig = create_scatter_with_regression(
-                    scatter_data, 'Fed_Funds', 'CPI_YoY',
-                    "Fed Funds vs Inflación", "Fed Funds (%)", "IPC YoY (%)"
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                scatter_data = pd.DataFrame({
-                    'DGS10': data['DGS10'],
-                    'UNRATE': data['UNRATE']
-                }).dropna()
-                
-                fig = create_scatter_with_regression(
-                    scatter_data, 'UNRATE', 'DGS10',
-                    "Desempleo vs Tesoro 10Y", "Desempleo (%)", "Rendimiento 10Y (%)"
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                cs_yoy = data['CSUSHPISA'].pct_change(12) * 100
-                scatter_data = pd.DataFrame({
-                    'CPI_YoY': cpi_yoy,
-                    'CS_YoY': cs_yoy
-                }).dropna()
-                
-                fig = create_scatter_with_regression(
-                    scatter_data, 'CPI_YoY', 'CS_YoY',
-                    "Inflación vs Precios Vivienda", "IPC YoY (%)", "Case-Shiller YoY (%)"
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                scatter_data = pd.DataFrame({
-                    'DGS10': data['DGS10'],
-                    'CS': data['CSUSHPISA']
-                }).dropna()
-                
-                fig = create_scatter_with_regression(
-                    scatter_data, 'DGS10', 'CS',
-                    "Tesoro 10Y vs Case-Shiller", "Rendimiento 10Y (%)", "Case-Shiller"
+                    spreads,
+                    "Spreads Clave", "Spread (%)",
+                    colors=['#f59e0b', '#10b981']
                 )
                 st.plotly_chart(fig, use_container_width=True)
     
@@ -719,149 +861,53 @@ def main():
     with tab5:
         st.markdown("## 📚 Guía de Interpretación")
         
-        st.markdown("### 🎯 ¿Cómo usar este dashboard?")
-        
-        with st.expander("💰 Política Monetaria - Guía"):
+        with st.expander("💰 Política Monetaria"):
             st.markdown("""
-            **Fed Funds Rate (Tasa de Fondos Federales)**
-            - Tasa de interés de referencia controlada por la Reserva Federal
-            - Influye en todas las demás tasas de la economía
-            - Subidas = política restrictiva (frenar inflación)
-            - Bajadas = política expansiva (estimular economía)
+            **Fed Funds Rate:** Tasa de interés de referencia. Subidas = política restrictiva, Bajadas = política expansiva.
             
-            **Rendimientos del Tesoro**
-            - DGS2: Bonos a 2 años → expectativas corto plazo
-            - DGS10: Bonos a 10 años → expectativas largo plazo
-            - DGS30: Bonos a 30 años → expectativas muy largo plazo
+            **Rendimientos del Tesoro:** DGS2 (corto plazo), DGS10 (largo plazo), DGS30 (muy largo plazo).
             
-            **Spread 10Y-2Y**
-            - Positivo: Curva normal (economía saludable)
-            - Negativo: Curva invertida (⚠️ señal de recesión)
-            - Históricamente ha precedido todas las recesiones desde 1970
+            **Spread 10Y-2Y:** Positivo = economía saludable, Negativo = señal de recesión.
             """)
         
-        with st.expander("📈 Inflación - Guía"):
+        with st.expander("📈 Inflación"):
             st.markdown("""
-            **Índice de Precios al Consumidor (IPC)**
-            - Mide el cambio en precios de una canasta de bienes y servicios
-            - IPC Headline: incluye alimentos y energía (más volátil)
-            - IPC Core (Subyacente): excluye alimentos y energía (más estable)
-            - Meta de la Fed: ~2% anual
+            **IPC:** Cambio en precios de bienes y servicios. Meta de la Fed: ~2% anual.
             
-            **Interpretación**
-            - < 2%: Inflación baja, posible estímulo monetario
-            - 2-3%: Rango objetivo, economía saludable
-            - > 3%: Inflación elevada, probable endurecimiento monetario
-            - > 5%: Inflación alta, política monetaria muy restrictiva
+            **Interpretación:** < 2% = baja, 2-3% = objetivo, > 3% = elevada, > 5% = alta.
             
-            **Cambios Mensuales (MoM)**
-            - Permiten ver tendencias más recientes
-            - Más volátiles pero más actuales que YoY
+            **MoM vs YoY:** MoM más volátil pero actual, YoY más estable.
             """)
         
-        with st.expander("👥 Mercado Laboral - Guía"):
+        with st.expander("👥 Mercado Laboral"):
             st.markdown("""
-            **Tasa de Desempleo**
-            - % de la fuerza laboral que está desempleada
-            - < 4%: Mercado laboral muy ajustado
-            - 4-5%: Rango normal/saludable
-            - > 6%: Mercado laboral débil
+            **Desempleo:** < 4% = ajustado, 4-5% = normal, > 6% = débil.
             
-            **Nóminas No Agrícolas (NFP)**
-            - Cambio mensual en empleos
-            - > 200K: Creación fuerte de empleo
-            - 100-200K: Crecimiento moderado
-            - < 100K: Crecimiento débil
-            - Negativo: Pérdida de empleos
+            **NFP:** > 200K = fuerte, 100-200K = moderado, < 100K = débil.
             
-            **JOLTS (Job Openings)**
-            - Vacantes de empleo disponibles
-            - Alto = empresas buscan contratar (economía fuerte)
-            - Bajo = pocas oportunidades (economía débil)
-            
-            **Salarios**
-            - Crecimiento acelerado puede presionar inflación
-            - La Fed monitorea closely esta relación
+            **JOLTS:** Vacantes disponibles. Alto = economía fuerte.
             """)
         
-        with st.expander("🏠 Sector Inmobiliario - Guía"):
+        with st.expander("🏠 Sector Inmobiliario"):
             st.markdown("""
-            **Case-Shiller Index**
-            - Índice más importante de precios de vivienda
-            - Cubre principales áreas metropolitanas de EE.UU.
-            - Valor base = 100 en Enero 2000
+            **Case-Shiller:** Índice principal de precios (base 100 en 2000).
             
-            **Housing Starts**
-            - Número de nuevas construcciones iniciadas (anualizado)
-            - Indicador adelantado de actividad económica
-            - Sensible a tasas de interés
+            **Housing Starts:** Indicador adelantado de actividad económica.
             
-            **Tasas Hipotecarias**
-            - Determinan asequibilidad de viviendas
-            - Generalmente siguen al Tesoro 10Y + spread
-            - Subidas reducen demanda y pueden enfriar precios
-            
-            **Building Permits**
-            - Permisos de construcción otorgados
-            - Precede a Housing Starts (indicador adelantado)
-            
-            **Ventas de Viviendas**
-            - New Home Sales: viviendas nuevas
-            - Existing Home Sales: viviendas usadas
-            - Miden demanda actual del mercado
+            **Tasas Hipotecarias:** Siguen al Tesoro 10Y + spread. Afectan asequibilidad.
             """)
         
-        with st.expander("📊 Correlaciones - Guía"):
+        with st.expander("📊 Curvas de Rendimiento"):
             st.markdown("""
-            **R² (Coeficiente de Determinación)**
-            - Mide qué tan bien la regresión explica la variación
-            - Rango: 0 a 1
-            - R² = 0.8: 80% de la variación es explicada
-            - R² > 0.7: Correlación fuerte
-            - R² 0.3-0.7: Correlación moderada
-            - R² < 0.3: Correlación débil
+            **Bull Steepener:** Curva se empina, tasas caen (expectativas de estímulo).
             
-            **Interpretación de Pendiente**
-            - Positiva: Variables se mueven en la misma dirección
-            - Negativa: Variables se mueven en direcciones opuestas
-            - Empinada: Relación fuerte
-            - Plana: Relación débil
+            **Bear Steepener:** Curva se empina, tasas suben (expectativas de inflación).
             
-            **Importante**
-            - Correlación ≠ Causalidad
-            - Relaciones históricas pueden cambiar
-            - Usar múltiples indicadores para decisiones
-            """)
-        
-        st.markdown("---")
-        st.markdown("### 🎓 Conceptos Clave")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("""
-            **YoY (Year-over-Year)**
-            - Comparación con mismo período año anterior
-            - Elimina estacionalidad
-            - Más estable que MoM
+            **Bull Flattener:** Curva se aplana, tasas caen (expectativas de desaceleración).
             
-            **MoM (Month-over-Month)**
-            - Comparación con mes anterior
-            - Más volátil pero más actual
-            - Útil para tendencias recientes
-            """)
-        
-        with col2:
-            st.markdown("""
-            **Política Restrictiva**
-            - Fed sube tasas
-            - Objetivo: frenar inflación
-            - Efecto: enfría economía
+            **Bear Flattener:** Curva se aplana, tasas suben (política restrictiva).
             
-            **Política Expansiva**
-            - Fed baja tasas
-            - Objetivo: estimular economía
-            - Efecto: puede aumentar inflación
+            **Twists:** Movimientos mixtos en diferentes partes de la curva.
             """)
     
     # Footer
