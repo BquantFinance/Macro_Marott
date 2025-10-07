@@ -109,17 +109,31 @@ st.markdown("""
 def fetch_multiple_series(series_dict, start_date, end_date):
     """Obtener múltiples series de FRED"""
     dfs = {}
+    errors = []
+    
     for name, series_id in series_dict.items():
         try:
             df = web.DataReader(series_id, 'fred', start_date, end_date)
             if df is not None and not df.empty:
                 dfs[name] = df.iloc[:, 0]
-        except:
-            pass
+            else:
+                errors.append(name)
+        except Exception as e:
+            errors.append(name)
+    
+    if len(errors) > 0 and len(errors) < len(series_dict):
+        # Algunas series no disponibles pero otras sí
+        pass
+    elif len(errors) == len(series_dict):
+        # Ninguna serie disponible
+        st.warning(f"⚠️ No se pudieron obtener datos para el período seleccionado. Intente un rango de fechas diferente.")
+        return None
     
     if dfs:
         combined = pd.DataFrame(dfs)
         combined = combined.dropna(how='all')
+        if combined.empty:
+            return None
         return combined
     return None
 
@@ -261,10 +275,15 @@ def create_bar_chart(df, title, y_title, color='#f59e0b'):
     if df is None or df.empty:
         return create_empty_chart(title)
     
+    # Filtrar solo datos válidos
+    df_clean = df.dropna(how='all')
+    if df_clean.empty:
+        return create_empty_chart(title)
+    
     fig = go.Figure()
-    for col in df.columns:
-        if df[col].notna().any():
-            fig.add_trace(go.Bar(x=df.index, y=df[col], name=col, marker_color=color))
+    for col in df_clean.columns:
+        if df_clean[col].notna().any():
+            fig.add_trace(go.Bar(x=df_clean.index, y=df_clean[col], name=col, marker_color=color))
     
     fig.update_layout(
         title=dict(text=title, font=dict(size=16, color='#06b6d4')),
@@ -281,16 +300,26 @@ def create_line_chart(df, title, y_title, colors=None):
     if df is None or df.empty:
         return create_empty_chart(title)
     
+    # Filtrar datos válidos
+    df_clean = df.dropna(how='all')
+    if df_clean.empty:
+        return create_empty_chart(title)
+    
     fig = go.Figure()
     if colors is None:
         colors = ['#06b6d4', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
     
-    for i, col in enumerate(df.columns):
-        if df[col].notna().any():
+    has_data = False
+    for i, col in enumerate(df_clean.columns):
+        if df_clean[col].notna().any() and len(df_clean[col].dropna()) > 0:
             fig.add_trace(go.Scatter(
-                x=df.index, y=df[col], name=col, mode='lines',
+                x=df_clean.index, y=df_clean[col], name=col, mode='lines',
                 line=dict(width=2, color=colors[i % len(colors)])
             ))
+            has_data = True
+    
+    if not has_data:
+        return create_empty_chart(title)
     
     fig.update_layout(
         title=dict(text=title, font=dict(size=16, color='#06b6d4')),
@@ -307,14 +336,24 @@ def create_area_chart(df, title, y_title, color='#06b6d4'):
     if df is None or df.empty:
         return create_empty_chart(title)
     
+    # Filtrar datos válidos
+    df_clean = df.dropna(how='all')
+    if df_clean.empty:
+        return create_empty_chart(title)
+    
     fig = go.Figure()
-    for col in df.columns:
-        if df[col].notna().any():
+    has_data = False
+    for col in df_clean.columns:
+        if df_clean[col].notna().any() and len(df_clean[col].dropna()) > 0:
             fig.add_trace(go.Scatter(
-                x=df.index, y=df[col], name=col, mode='lines',
+                x=df_clean.index, y=df_clean[col], name=col, mode='lines',
                 fill='tozeroy', line=dict(width=2, color=color),
                 fillcolor='rgba(6, 182, 212, 0.3)'
             ))
+            has_data = True
+    
+    if not has_data:
+        return create_empty_chart(title)
     
     fig.update_layout(
         title=dict(text=title, font=dict(size=16, color='#06b6d4')),
@@ -419,17 +458,137 @@ def create_combo_chart(df, bar_cols, line_cols, title, y1_title, y2_title=None):
 def create_empty_chart(title):
     fig = go.Figure()
     fig.add_annotation(
-        text="No hay datos disponibles", xref="paper", yref="paper",
-        x=0.5, y=0.5, showarrow=False, font=dict(size=16, color='#94a3b8')
+        text="📊 No hay datos disponibles<br><sub>Intente seleccionar un rango de fechas diferente</sub>",
+        xref="paper", yref="paper",
+        x=0.5, y=0.5, showarrow=False, 
+        font=dict(size=16, color='#94a3b8'),
+        align="center"
     )
     fig.update_layout(
         title=dict(text=title, font=dict(size=16, color='#06b6d4')),
         plot_bgcolor='#0f172a', paper_bgcolor='#1e293b',
-        height=400, xaxis=dict(visible=False), yaxis=dict(visible=False)
+        height=400, 
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        margin=dict(l=40, r=40, t=60, b=40)
     )
     return fig
 
-def info_box(title, content):
+def create_curve_explanation_chart():
+    """Crear gráfico explicativo de movimientos de curva"""
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=('Bull Flattening', 'Bear Flattening', 
+                       'Bull Steepening', 'Bear Steepening'),
+        vertical_spacing=0.15,
+        horizontal_spacing=0.12
+    )
+    
+    # Datos de ejemplo para las curvas
+    x = [0, 1, 2]  # Short, Medium, Long
+    
+    # Bull Flattening: Front sube menos, back baja más
+    y_initial_bf = [1, 2, 3]
+    y_final_bf = [1.2, 2.1, 2.5]
+    
+    fig.add_trace(go.Scatter(x=x, y=y_initial_bf, mode='lines', 
+                            line=dict(color='#94a3b8', width=2, dash='solid'),
+                            showlegend=False, name='Inicial'),
+                 row=1, col=1)
+    fig.add_trace(go.Scatter(x=x, y=y_final_bf, mode='lines',
+                            line=dict(color='#f59e0b', width=2, dash='dash'),
+                            showlegend=False, name='Final'),
+                 row=1, col=1)
+    # Flechas
+    fig.add_annotation(x=0, y=1, ax=0, ay=1.2, xref='x1', yref='y1', axref='x1', ayref='y1',
+                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#10b981',
+                      row=1, col=1)
+    fig.add_annotation(x=2, y=3, ax=2, ay=2.5, xref='x1', yref='y1', axref='x1', ayref='y1',
+                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#10b981',
+                      row=1, col=1)
+    
+    # Bear Flattening: Front sube más, back sube menos
+    y_initial_bearf = [1, 2, 3]
+    y_final_bearf = [2, 2.8, 3.2]
+    
+    fig.add_trace(go.Scatter(x=x, y=y_initial_bearf, mode='lines',
+                            line=dict(color='#94a3b8', width=2, dash='solid'),
+                            showlegend=False),
+                 row=1, col=2)
+    fig.add_trace(go.Scatter(x=x, y=y_final_bearf, mode='lines',
+                            line=dict(color='#f59e0b', width=2, dash='dash'),
+                            showlegend=False),
+                 row=1, col=2)
+    fig.add_annotation(x=0, y=1, ax=0, ay=2, xref='x2', yref='y2', axref='x2', ayref='y2',
+                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#ef4444',
+                      row=1, col=2)
+    fig.add_annotation(x=2, y=3, ax=2, ay=3.2, xref='x2', yref='y2', axref='x2', ayref='y2',
+                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#ef4444',
+                      row=1, col=2)
+    
+    # Bull Steepening: Front baja más, back baja menos
+    y_initial_bs = [2, 2.5, 3]
+    y_final_bs = [1, 1.8, 2.7]
+    
+    fig.add_trace(go.Scatter(x=x, y=y_initial_bs, mode='lines',
+                            line=dict(color='#94a3b8', width=2, dash='solid'),
+                            showlegend=False),
+                 row=2, col=1)
+    fig.add_trace(go.Scatter(x=x, y=y_final_bs, mode='lines',
+                            line=dict(color='#f59e0b', width=2, dash='dash'),
+                            showlegend=False),
+                 row=2, col=1)
+    fig.add_annotation(x=0, y=2, ax=0, ay=1, xref='x3', yref='y3', axref='x3', ayref='y3',
+                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#10b981',
+                      row=2, col=1)
+    fig.add_annotation(x=2, y=3, ax=2, ay=2.7, xref='x3', yref='y3', axref='x3', ayref='y3',
+                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#10b981',
+                      row=2, col=1)
+    
+    # Bear Steepening: Front sube menos, back sube más
+    y_initial_bears = [1, 2, 3]
+    y_final_bears = [1.3, 2.5, 3.8]
+    
+    fig.add_trace(go.Scatter(x=x, y=y_initial_bears, mode='lines',
+                            line=dict(color='#94a3b8', width=2, dash='solid'),
+                            showlegend=False),
+                 row=2, col=2)
+    fig.add_trace(go.Scatter(x=x, y=y_final_bears, mode='lines',
+                            line=dict(color='#f59e0b', width=2, dash='dash'),
+                            showlegend=False),
+                 row=2, col=2)
+    fig.add_annotation(x=0, y=1, ax=0, ay=1.3, xref='x4', yref='y4', axref='x4', ayref='y4',
+                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#ef4444',
+                      row=2, col=2)
+    fig.add_annotation(x=2, y=3, ax=2, ay=3.8, xref='x4', yref='y4', axref='x4', ayref='y4',
+                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#ef4444',
+                      row=2, col=2)
+    
+    # Layout
+    fig.update_xaxes(showticklabels=False, showgrid=False)
+    fig.update_yaxes(showticklabels=False, showgrid=False)
+    
+    fig.update_layout(
+        height=600,
+        plot_bgcolor='#0f172a',
+        paper_bgcolor='#1e293b',
+        font=dict(color='#e2e8f0', size=14),
+        showlegend=False,
+        title=dict(
+            text="Guía Visual: Movimientos de la Curva de Rendimiento",
+            font=dict(size=20, color='#06b6d4', family='Arial Black'),
+            x=0.5,
+            xanchor='center'
+        ),
+        annotations=[
+            dict(text="🟢 = Tasas bajan | 🔴 = Tasas suben", 
+                 xref="paper", yref="paper",
+                 x=0.5, y=-0.05, showarrow=False,
+                 font=dict(size=12, color='#94a3b8'))
+        ]
+    )
+    
+    return fig
     st.markdown(f"""
     <div style='background: linear-gradient(135deg, #1e293b 0%, #334155 100%); 
                 padding: 15px; border-radius: 10px; border-left: 4px solid #06b6d4; margin: 10px 0;'>
@@ -531,6 +690,8 @@ def main():
                     colors=['#8b5cf6']
                 )
                 st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error("❌ No se pudieron cargar los datos de política monetaria. Por favor, intente con un rango de fechas diferente o verifique su conexión.")
     
     # TAB 2: INFLACIÓN & LABORAL
     with tab2:
@@ -580,11 +741,16 @@ def main():
             
             with col2:
                 mom = data[['CPIAUCSL', 'CPILFESL']].pct_change(1) * 100
-                fig = create_bar_chart(
-                    mom[['CPIAUCSL']].dropna().tail(60),
-                    "IPC - Cambios Mensuales", "% MoM"
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                mom_clean = mom[['CPIAUCSL']].dropna()
+                
+                if not mom_clean.empty and len(mom_clean) > 0:
+                    fig = create_bar_chart(
+                        mom_clean.tail(60),
+                        "IPC - Cambios Mensuales", "% MoM"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("Datos de cambios mensuales no disponibles")
             
             st.markdown("### 👥 Mercado Laboral")
             
@@ -609,13 +775,17 @@ def main():
             col1, col2 = st.columns(2)
             
             with col1:
-                nfp_chg = data['PAYEMS'].diff()
-                fig = create_bar_chart(
-                    pd.DataFrame({'NFP': nfp_chg}).dropna().tail(60),
-                    "Cambios Mensuales NFP", "Miles",
-                    color='#10b981'
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                nfp_chg = data['PAYEMS'].diff().dropna()
+                
+                if not nfp_chg.empty and len(nfp_chg) > 0:
+                    fig = create_bar_chart(
+                        pd.DataFrame({'NFP': nfp_chg}).tail(60),
+                        "Cambios Mensuales NFP", "Miles",
+                        color='#10b981'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("Datos de cambios NFP no disponibles")
             
             with col2:
                 fig = create_area_chart(
@@ -644,6 +814,8 @@ def main():
                     colors=['#ef4444']
                 )
                 st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error("❌ No se pudieron cargar los datos de inflación y mercado laboral. Por favor, intente con un rango de fechas diferente.")
     
     # TAB 3: SECTOR INMOBILIARIO
     with tab3:
@@ -690,13 +862,21 @@ def main():
                 st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                cs_yoy = data['CSUSHPISA'].pct_change(12) * 100
-                fig = create_line_chart(
-                    pd.DataFrame({'CS YoY': cs_yoy}).dropna(),
-                    "Case-Shiller YoY", "% YoY",
-                    colors=['#06b6d4']
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                if 'CSUSHPISA' in data.columns:
+                    cs_yoy = data['CSUSHPISA'].pct_change(12) * 100
+                    cs_yoy_clean = cs_yoy.dropna()
+                    
+                    if not cs_yoy_clean.empty and len(cs_yoy_clean) > 0:
+                        fig = create_line_chart(
+                            pd.DataFrame({'CS YoY': cs_yoy_clean}),
+                            "Case-Shiller YoY", "% YoY",
+                            colors=['#06b6d4']
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.info("Datos de Case-Shiller YoY no disponibles")
+                else:
+                    st.info("Datos de Case-Shiller no disponibles")
             
             st.markdown("### 🏗️ Actividad de Construcción")
             
@@ -749,6 +929,8 @@ def main():
                     color='#3b82f6'
                 )
                 st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error("❌ No se pudieron cargar los datos del sector inmobiliario. Por favor, intente con un rango de fechas diferente.")
     
     # TAB 4: ANÁLISIS DE CURVAS
     with tab4:
@@ -759,6 +941,28 @@ def main():
                     "Análisis avanzado de los movimientos de la curva de rendimientos. "
                     "Bull/Bear Steepener/Flattener indican diferentes escenarios económicos y expectativas del mercado.")
         
+        # Agregar guía visual
+        st.markdown("### 📚 Guía Visual de Movimientos")
+        
+        with st.expander("👁️ Ver Guía Visual (Recomendado para nuevos usuarios)", expanded=False):
+            st.markdown("""
+            **Leyenda:**
+            - **Línea sólida gris:** Curva inicial
+            - **Línea punteada naranja:** Curva final
+            - **Flechas verdes (🟢):** Tasas bajando
+            - **Flechas rojas (🔴):** Tasas subiendo
+            
+            **Interpretación:**
+            - **Flattening:** El spread se reduce (curva se aplana)
+            - **Steepening:** El spread aumenta (curva se empina)
+            - **Bull:** Movimiento con tasas bajando (bueno para bonos)
+            - **Bear:** Movimiento con tasas subiendo (malo para bonos)
+            """)
+            
+            fig_guide = create_curve_explanation_chart()
+            st.plotly_chart(fig_guide, use_container_width=True)
+        
+        st.markdown("---")
         st.markdown("### ⚙️ Configurar Análisis de Curva")
         
         col1, col2, col3 = st.columns(3)
@@ -856,6 +1060,8 @@ def main():
                     colors=['#f59e0b', '#10b981']
                 )
                 st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("ℹ️ No hay datos adicionales de spreads disponibles para este rango de fechas.")
     
     # TAB 5: GUÍA
     with tab5:
@@ -897,17 +1103,52 @@ def main():
             **Tasas Hipotecarias:** Siguen al Tesoro 10Y + spread. Afectan asequibilidad.
             """)
         
-        with st.expander("📊 Curvas de Rendimiento"):
+        with st.expander("📊 Curvas de Rendimiento - Guía Detallada"):
             st.markdown("""
-            **Bull Steepener:** Curva se empina, tasas caen (expectativas de estímulo).
+            ### Movimientos Principales de la Curva
             
-            **Bear Steepener:** Curva se empina, tasas suben (expectativas de inflación).
+            #### 🟢 Bull Flattening (Aplanamiento Alcista)
+            - **Qué pasa:** El spread entre tasas largas y cortas se reduce
+            - **Movimiento:** Tasas cortas SUBEN menos, tasas largas BAJAN más
+            - **Significado:** Expectativas de desaceleración económica
+            - **Escenario:** La Fed puede estar terminando un ciclo de subidas
             
-            **Bull Flattener:** Curva se aplana, tasas caen (expectativas de desaceleración).
+            #### 🔴 Bear Flattening (Aplanamiento Bajista)
+            - **Qué pasa:** El spread se reduce con tasas subiendo
+            - **Movimiento:** Tasas cortas SUBEN más, tasas largas SUBEN menos
+            - **Significado:** La Fed está endureciendo agresivamente
+            - **Escenario:** Política monetaria restrictiva (combatir inflación)
             
-            **Bear Flattener:** Curva se aplana, tasas suben (política restrictiva).
+            #### 🟢 Bull Steepening (Empinamiento Alcista)
+            - **Qué pasa:** El spread aumenta con tasas bajando
+            - **Movimiento:** Tasas cortas BAJAN más, tasas largas BAJAN menos
+            - **Significado:** Expectativas de estímulo monetario agresivo
+            - **Escenario:** La Fed está recortando tasas (recesión o crisis)
             
-            **Twists:** Movimientos mixtos en diferentes partes de la curva.
+            #### 🔴 Bear Steepening (Empinamiento Bajista)
+            - **Qué pasa:** El spread aumenta con tasas subiendo
+            - **Movimiento:** Tasas cortas SUBEN menos, tasas largas SUBEN más
+            - **Significado:** Expectativas de inflación a largo plazo
+            - **Escenario:** Preocupaciones sobre déficit o inflación futura
+            
+            #### 🔄 Twists (Torsiones)
+            - **Qué pasa:** Movimientos mixtos no clasificables
+            - **Significado:** Incertidumbre o transición entre escenarios
+            
+            ### ¿Cómo Interpretar?
+            
+            **"Bull" vs "Bear":**
+            - Bull (🟢) = Tasas bajando = Bueno para bonos = Preocupación económica
+            - Bear (🔴) = Tasas subiendo = Malo para bonos = Fortaleza económica o inflación
+            
+            **"Steepening" vs "Flattening":**
+            - Steepening = Spread aumenta = Mayor diferencia entre corto y largo plazo
+            - Flattening = Spread disminuye = Menor diferencia entre corto y largo plazo
+            
+            **Curva Invertida (Caso Especial):**
+            - Cuando tasas cortas > tasas largas (spread negativo)
+            - Históricamente precede recesiones
+            - Señal de alerta importante
             """)
     
     # Footer
