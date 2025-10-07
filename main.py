@@ -122,10 +122,8 @@ def fetch_multiple_series(series_dict, start_date, end_date):
             errors.append(name)
     
     if len(errors) > 0 and len(errors) < len(series_dict):
-        # Algunas series no disponibles pero otras sí
         pass
     elif len(errors) == len(series_dict):
-        # Ninguna serie disponible
         st.warning(f"⚠️ No se pudieron obtener datos para el período seleccionado. Intente un rango de fechas diferente.")
         return None
     
@@ -168,16 +166,13 @@ def calculate_butterfly(df, short_col, mid_col, long_col):
 
 def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=1.0):
     """Calcular métricas de curva de rendimiento"""
-    # Calcular spread
     df['curve'] = (df[back_col] - df[front_col]) * 100
     df['curve_smooth'] = df['curve'].rolling(window=2).mean()
     
-    # Valores lookback
     df['curve_lookback'] = df['curve'].shift(lookback)
     df['front_lookback'] = df[front_col].shift(lookback)
     df['back_lookback'] = df[back_col].shift(lookback)
     
-    # Clasificar movimientos
     df['bullsteepener'] = np.where(
         (df['curve'] > df['curve_lookback'] + threshold) &
         (df[front_col] < df['front_lookback']) &
@@ -224,7 +219,6 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg):
     """Crear gráfico de comportamiento de curva estilo Bloomberg"""
     fig = go.Figure()
     
-    # Colores estilo Bloomberg
     colors = {
         'bullsteepener': '#00D000',
         'bearsteepener': '#D00000',
@@ -243,7 +237,6 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg):
         'flattenertwist': 'Flattener Twist'
     }
     
-    # Agregar barras
     for indicator, color in colors.items():
         if indicator in df.columns:
             fig.add_trace(go.Bar(
@@ -254,7 +247,6 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg):
                 opacity=0.95
             ))
     
-    # Agregar línea de curva
     if 'curve_smooth' in df.columns:
         fig.add_trace(go.Scatter(
             x=df.index,
@@ -288,7 +280,6 @@ def create_bar_chart(df, title, y_title, color='#f59e0b'):
     if df is None or df.empty:
         return create_empty_chart(title)
     
-    # Filtrar solo datos válidos
     df_clean = df.dropna(how='all')
     if df_clean.empty:
         return create_empty_chart(title)
@@ -313,7 +304,6 @@ def create_line_chart(df, title, y_title, colors=None):
     if df is None or df.empty:
         return create_empty_chart(title)
     
-    # Filtrar datos válidos
     df_clean = df.dropna(how='all')
     if df_clean.empty:
         return create_empty_chart(title)
@@ -349,7 +339,6 @@ def create_area_chart(df, title, y_title, color='#06b6d4'):
     if df is None or df.empty:
         return create_empty_chart(title)
     
-    # Filtrar datos válidos
     df_clean = df.dropna(how='all')
     if df_clean.empty:
         return create_empty_chart(title)
@@ -413,61 +402,6 @@ def create_dual_axis_chart(df, col1, col2, title, y1_title, y2_title):
     
     return fig
 
-def create_combo_chart(df, bar_cols, line_cols, title, y1_title, y2_title=None):
-    """Crear gráfico combinado barras + líneas"""
-    if df is None or df.empty:
-        return create_empty_chart(title)
-    
-    if y2_title:
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
-    else:
-        fig = go.Figure()
-    
-    colors_bar = ['#f59e0b', '#ef4444']
-    colors_line = ['#06b6d4', '#8b5cf6', '#10b981']
-    
-    # Barras
-    for i, col in enumerate(bar_cols):
-        if col in df.columns and df[col].notna().any():
-            if y2_title:
-                fig.add_trace(
-                    go.Bar(x=df.index, y=df[col], name=col, 
-                          marker_color=colors_bar[i % len(colors_bar)]),
-                    secondary_y=False
-                )
-            else:
-                fig.add_trace(go.Bar(x=df.index, y=df[col], name=col,
-                                    marker_color=colors_bar[i % len(colors_bar)]))
-    
-    # Líneas
-    for i, col in enumerate(line_cols):
-        if col in df.columns and df[col].notna().any():
-            if y2_title:
-                fig.add_trace(
-                    go.Scatter(x=df.index, y=df[col], name=col, mode='lines',
-                              line=dict(width=3, color=colors_line[i % len(colors_line)])),
-                    secondary_y=True
-                )
-            else:
-                fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col, mode='lines',
-                                        line=dict(width=3, color=colors_line[i % len(colors_line)])))
-    
-    fig.update_layout(
-        title=dict(text=title, font=dict(size=16, color='#06b6d4')),
-        plot_bgcolor='#0f172a', paper_bgcolor='#1e293b',
-        font=dict(color='#e2e8f0', size=11),
-        xaxis=dict(showgrid=False, gridcolor='#334155'),
-        height=450
-    )
-    
-    if y2_title:
-        fig.update_yaxes(title_text=y1_title, secondary_y=False, showgrid=True, gridcolor='#334155')
-        fig.update_yaxes(title_text=y2_title, secondary_y=True, showgrid=False)
-    else:
-        fig.update_yaxes(title_text=y1_title, showgrid=True, gridcolor='#334155')
-    
-    return fig
-
 def create_empty_chart(title):
     fig = go.Figure()
     fig.add_annotation(
@@ -497,12 +431,9 @@ def create_curve_explanation_chart():
         horizontal_spacing=0.12
     )
     
-    # Datos de ejemplo para las curvas (más puntos para curvas más suaves)
-    x = np.linspace(0, 10, 50)  # Short to Long maturity
-    x_labels = [2, 5, 10]  # Años para etiquetas
+    x = np.linspace(0, 10, 50)
     
-    # Bull Flattening: Front sube poco, back baja mucho
-    # Curvas más pronunciadas usando interpolación
+    # Bull Flattening
     y_initial_bf = 1.5 + 0.8*x + 0.05*x**1.3
     y_final_bf = 2.0 + 0.3*x + 0.02*x**1.5
     
@@ -515,7 +446,7 @@ def create_curve_explanation_chart():
                             showlegend=False, name='Final'),
                  row=1, col=1)
     
-    # Bear Flattening: Front sube mucho, back sube poco
+    # Bear Flattening
     y_initial_bearf = 2.0 + 0.5*x + 0.03*x**1.4
     y_final_bearf = 3.5 + 0.2*x + 0.01*x**1.3
     
@@ -528,7 +459,7 @@ def create_curve_explanation_chart():
                             showlegend=False),
                  row=1, col=2)
     
-    # Bull Steepening: Front baja mucho, back baja poco
+    # Bull Steepening
     y_initial_bs = 3.5 + 0.3*x + 0.02*x**1.3
     y_final_bs = 1.5 + 0.6*x + 0.05*x**1.4
     
@@ -541,7 +472,7 @@ def create_curve_explanation_chart():
                             showlegend=False),
                  row=2, col=1)
     
-    # Bear Steepening: Front sube poco, back sube mucho
+    # Bear Steepening
     y_initial_bears = 1.5 + 0.4*x + 0.03*x**1.3
     y_final_bears = 2.0 + 0.8*x + 0.08*x**1.4
     
@@ -554,27 +485,8 @@ def create_curve_explanation_chart():
                             showlegend=False),
                  row=2, col=2)
     
-    # Layout
     fig.update_xaxes(showticklabels=False, showgrid=True, gridcolor='#1e3a4a')
     fig.update_yaxes(showticklabels=False, showgrid=True, gridcolor='#1e3a4a')
-    
-    # Añadir etiquetas de madurez
-    for i in range(1, 5):
-        fig.add_annotation(
-            x=0, y=0, text="2Y", xref=f'x{i}', yref=f'y{i}domain',
-            showarrow=False, font=dict(size=10, color='#64748b'),
-            xanchor='left', yanchor='top'
-        )
-        fig.add_annotation(
-            x=5, y=0, text="5Y", xref=f'x{i}', yref=f'y{i}domain',
-            showarrow=False, font=dict(size=10, color='#64748b'),
-            xanchor='center', yanchor='top'
-        )
-        fig.add_annotation(
-            x=10, y=0, text="10Y", xref=f'x{i}', yref=f'y{i}domain',
-            showarrow=False, font=dict(size=10, color='#64748b'),
-            xanchor='right', yanchor='top'
-        )
     
     fig.update_layout(
         height=650,
@@ -696,7 +608,7 @@ def main():
                 )
                 st.plotly_chart(fig, use_container_width=True)
         else:
-            st.error("❌ No se pudieron cargar los datos de política monetaria. Por favor, intente con un rango de fechas diferente o verifique su conexión.")
+            st.error("❌ No se pudieron cargar los datos de política monetaria.")
     
     # TAB 2: INFLACIÓN & LABORAL
     with tab2:
@@ -717,7 +629,6 @@ def main():
             data = fetch_multiple_series(combined_series, start_date, end_date)
         
         if data is not None and not data.empty:
-            # Métricas
             col1, col2, col3, col4 = st.columns(4)
             
             yoy = data[['CPIAUCSL', 'CPILFESL', 'PCEPI']].pct_change(12) * 100
@@ -820,7 +731,7 @@ def main():
                 )
                 st.plotly_chart(fig, use_container_width=True)
         else:
-            st.error("❌ No se pudieron cargar los datos de inflación y mercado laboral. Por favor, intente con un rango de fechas diferente.")
+            st.error("❌ No se pudieron cargar los datos de inflación y mercado laboral.")
     
     # TAB 3: SECTOR INMOBILIARIO
     with tab3:
@@ -925,7 +836,6 @@ def main():
                     )
                     st.plotly_chart(fig, use_container_width=True)
             
-            # Gasto en construcción
             if 'PRRESCON' in data.columns:
                 st.markdown("### 🔨 Gasto en Construcción")
                 fig = create_area_chart(
@@ -935,7 +845,7 @@ def main():
                 )
                 st.plotly_chart(fig, use_container_width=True)
         else:
-            st.error("❌ No se pudieron cargar los datos del sector inmobiliario. Por favor, intente con un rango de fechas diferente.")
+            st.error("❌ No se pudieron cargar los datos del sector inmobiliario.")
     
     # TAB 4: ANÁLISIS DE CURVAS
     with tab4:
@@ -946,7 +856,6 @@ def main():
                     "Análisis avanzado de los movimientos de la curva de rendimientos. "
                     "Bull/Bear Steepener/Flattener indican diferentes escenarios económicos y expectativas del mercado.")
         
-        # Agregar guía visual
         st.markdown("### 📚 Guía Visual de Movimientos")
         
         with st.expander("👁️ Ver Guía Visual (Recomendado para nuevos usuarios)", expanded=False):
@@ -991,7 +900,6 @@ def main():
         with col3:
             lookback = st.slider("Lookback (días)", 5, 30, 10)
         
-        # Obtener datos de curva
         curve_series = {
             front_leg: front_leg,
             back_leg: back_leg
@@ -1001,10 +909,8 @@ def main():
             curve_data = fetch_multiple_series(curve_series, start_date, end_date)
         
         if curve_data is not None and not curve_data.empty:
-            # Calcular métricas
             curve_data = calculate_curve_metrics(curve_data, front_leg, back_leg, lookback)
             
-            # Gráfico principal de comportamiento
             fig = create_curve_behavior_chart(curve_data, "Comportamiento de la Curva", front_leg, back_leg)
             st.plotly_chart(fig, use_container_width=True)
             
@@ -1029,7 +935,7 @@ def main():
                     )
                     st.plotly_chart(fig, use_container_width=True)
         
-        # ANÁLISIS BUTTERFLY (TWIST)
+        # ANÁLISIS BUTTERFLY
         st.markdown("### 🦋 Análisis Butterfly - Curvatura de la Curva")
         
         with st.expander("ℹ️ ¿Qué es el Butterfly Spread?"):
@@ -1039,7 +945,6 @@ def main():
                     "Valores negativos indican una curva cóncava (el medio baja más), "
                     "valores positivos indican una curva convexa (el medio sube más).")
         
-        # Obtener datos para butterfly 2-5-10
         butterfly_series = {
             'DGS2': 'DGS2',
             'DGS5': 'DGS5', 
@@ -1050,7 +955,6 @@ def main():
             butterfly_data = fetch_multiple_series(butterfly_series, start_date, end_date)
         
         if butterfly_data is not None and not butterfly_data.empty:
-            # Calcular butterfly
             butterfly = calculate_butterfly(butterfly_data, 'DGS2', 'DGS5', 'DGS10')
             
             if butterfly is not None:
@@ -1060,7 +964,6 @@ def main():
                     col1, col2 = st.columns([2, 1])
                     
                     with col1:
-                        # Gráfico de butterfly
                         fig = go.Figure()
                         fig.add_trace(go.Scatter(
                             x=butterfly_df.index,
@@ -1072,7 +975,6 @@ def main():
                             name='Butterfly'
                         ))
                         
-                        # Línea de referencia en cero
                         fig.add_hline(y=0, line_dash="dash", line_color="#475569", 
                                      annotation_text="Neutral", annotation_position="right")
                         
@@ -1098,16 +1000,16 @@ def main():
                         
                         if current_butterfly < -20:
                             status = "🔵 Muy Cóncava"
-                            interpretation = "El 5Y está significativamente más bajo que el promedio de 2Y y 10Y. Curva muy empinada en el medio."
+                            interpretation = "El 5Y está significativamente más bajo que el promedio de 2Y y 10Y."
                         elif current_butterfly < 0:
                             status = "🔷 Cóncava"
-                            interpretation = "El 5Y está por debajo del promedio de 2Y y 10Y. Curvatura normal."
+                            interpretation = "El 5Y está por debajo del promedio de 2Y y 10Y."
                         elif current_butterfly < 20:
                             status = "🔶 Convexa"
-                            interpretation = "El 5Y está por encima del promedio de 2Y y 10Y. Curva aplanándose."
+                            interpretation = "El 5Y está por encima del promedio de 2Y y 10Y."
                         else:
                             status = "🔴 Muy Convexa"
-                            interpretation = "El 5Y está significativamente más alto. Posible inversión en el medio."
+                            interpretation = "El 5Y está significativamente más alto."
                         
                         st.metric("Butterfly Actual", f"{current_butterfly:.2f} bps")
                         st.markdown(f"**Estado:** {status}")
@@ -1115,7 +1017,6 @@ def main():
         
         st.markdown("### 📊 Curvas Históricas Adicionales")
         
-        # Otros spreads importantes
         other_series = {
             'DGS2': 'DGS2',
             'DGS10': 'DGS10',
@@ -1149,8 +1050,6 @@ def main():
                     colors=['#f59e0b', '#10b981']
                 )
                 st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("ℹ️ No hay datos adicionales de spreads disponibles para este rango de fechas.")
     
     # TAB 5: GUÍA
     with tab5:
@@ -1200,76 +1099,37 @@ def main():
             - **Qué pasa:** El spread entre tasas largas y cortas se reduce
             - **Movimiento:** Tasas cortas SUBEN menos, tasas largas BAJAN más
             - **Significado:** Expectativas de desaceleración económica
-            - **Escenario:** La Fed puede estar terminando un ciclo de subidas
             
             #### 🔴 Bear Flattening (Aplanamiento Bajista)
             - **Qué pasa:** El spread se reduce con tasas subiendo
             - **Movimiento:** Tasas cortas SUBEN más, tasas largas SUBEN menos
             - **Significado:** La Fed está endureciendo agresivamente
-            - **Escenario:** Política monetaria restrictiva (combatir inflación)
             
             #### 🟢 Bull Steepening (Empinamiento Alcista)
             - **Qué pasa:** El spread aumenta con tasas bajando
             - **Movimiento:** Tasas cortas BAJAN más, tasas largas BAJAN menos
             - **Significado:** Expectativas de estímulo monetario agresivo
-            - **Escenario:** La Fed está recortando tasas (recesión o crisis)
             
             #### 🔴 Bear Steepening (Empinamiento Bajista)
             - **Qué pasa:** El spread aumenta con tasas subiendo
             - **Movimiento:** Tasas cortas SUBEN menos, tasas largas SUBEN más
             - **Significado:** Expectativas de inflación a largo plazo
-            - **Escenario:** Preocupaciones sobre déficit o inflación futura
-            
-            #### 🔄 Twists (Torsiones)
-            - **Qué pasa:** Movimientos mixtos no clasificables
-            - **Significado:** Incertidumbre o transición entre escenarios
             
             ### 🦋 Butterfly Spread (Curvatura)
-            
-            El **butterfly spread** mide la curvatura de la curva de rendimientos y detecta movimientos de "twist":
             
             **Fórmula:** Butterfly(2,5,10) = 2×Yield₅ - Yield₂ - Yield₁₀
             
             **Interpretación:**
-            - **Butterfly Negativo (<0):** Curva cóncava
-              - El rendimiento del 5Y está MÁS BAJO que el promedio del 2Y y 10Y
-              - La "panza" de la curva está hundida
-              - Típico cuando hay expectativas de cambio de política monetaria a medio plazo
+            - **Butterfly Negativo (<0):** Curva cóncava - El 5Y está más bajo que el promedio
+            - **Butterfly Positivo (>0):** Curva convexa - El 5Y está más alto que el promedio
             
-            - **Butterfly Positivo (>0):** Curva convexa  
-              - El rendimiento del 5Y está MÁS ALTO que el promedio del 2Y y 10Y
-              - La "panza" de la curva está elevada
-              - Puede indicar incertidumbre sobre el plazo medio
+            **Movimientos:**
+            - **Steepener Twist:** Butterfly se vuelve más negativo
+            - **Flattener Twist:** Butterfly se vuelve más positivo
             
-            - **Butterfly cercano a 0:** Curva relativamente lineal
-            
-            **Movimientos del Butterfly:**
-            - **Steepener Twist:** Butterfly se vuelve más negativo (panza baja más)
-            - **Flattener Twist:** Butterfly se vuelve más positivo (panza sube)
-            
-            **Aplicación práctica:**
-            Los traders de bonos usan el butterfly para:
-            1. Identificar oportunidades de arbitraje
-            2. Predecir cambios en la política monetaria
-            3. Gestionar el riesgo de curva en carteras de renta fija
-            
-            ### ¿Cómo Interpretar?
-            
-            **"Bull" vs "Bear":**
-            - Bull (🟢) = Tasas bajando = Bueno para bonos = Preocupación económica
-            - Bear (🔴) = Tasas subiendo = Malo para bonos = Fortaleza económica o inflación
-            
-            **"Steepening" vs "Flattening":**
-            - Steepening = Spread aumenta = Mayor diferencia entre corto y largo plazo
-            - Flattening = Spread disminuye = Menor diferencia entre corto y largo plazo
-            
-            **Curva Invertida (Caso Especial):**
-            - Cuando tasas cortas > tasas largas (spread negativo)
-            - Históricamente precede recesiones
-            - Señal de alerta importante
+            **Curva Invertida:** Cuando tasas cortas > tasas largas - Señal de alerta de recesión
             """)
     
-    # Footer
     st.markdown("""
     <div class="collaboration-footer">
         <p class="collab-text">Desarrollado en colaboración con</p>
