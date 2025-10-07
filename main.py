@@ -422,68 +422,114 @@ def create_empty_chart(title):
     return fig
 
 def create_curve_explanation_chart():
-    """Crear gráfico explicativo de movimientos de curva con curvas más pronunciadas"""
+    """Crear gráfico explicativo de movimientos de curva similar a la imagen de referencia"""
     fig = make_subplots(
         rows=2, cols=2,
         subplot_titles=('Bull Flattening', 'Bear Flattening', 
                        'Bull Steepening', 'Bear Steepening'),
-        vertical_spacing=0.15,
-        horizontal_spacing=0.12
+        vertical_spacing=0.2,
+        horizontal_spacing=0.15
     )
     
-    x = np.linspace(0, 10, 50)
+    # Crear curvas con forma más realista
+    x = np.linspace(0, 10, 100)
     
-    # Bull Flattening
-    y_initial_bf = 1.5 + 0.8*x + 0.05*x**1.3
-    y_final_bf = 2.0 + 0.3*x + 0.02*x**1.5
+    # Bull Flattening: 2Y sube poco, 10Y baja mucho
+    y_initial_bf = 2.0 + 0.15*x + 0.005*x**2
+    y_final_bf = 2.3 + 0.08*x + 0.001*x**2
     
-    fig.add_trace(go.Scatter(x=x, y=y_initial_bf, mode='lines', 
-                            line=dict(color='#94a3b8', width=3),
-                            showlegend=False, name='Inicial'),
-                 row=1, col=1)
-    fig.add_trace(go.Scatter(x=x, y=y_final_bf, mode='lines',
-                            line=dict(color='#f59e0b', width=3, dash='dash'),
-                            showlegend=False, name='Final'),
-                 row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=x, y=y_initial_bf, mode='lines',
+        line=dict(color='#94a3b8', width=3),
+        showlegend=False, name='Inicial'
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=x, y=y_final_bf, mode='lines',
+        line=dict(color='#f59e0b', width=3, dash='dash'),
+        showlegend=False, name='Final'
+    ), row=1, col=1)
     
-    # Bear Flattening
-    y_initial_bearf = 2.0 + 0.5*x + 0.03*x**1.4
-    y_final_bearf = 3.5 + 0.2*x + 0.01*x**1.3
+    # Añadir flechas con anotaciones
+    fig.add_annotation(x=1, y=2.0, ax=1, ay=2.3,
+                      xref='x1', yref='y1', axref='x1', ayref='y1',
+                      showarrow=True, arrowhead=2, arrowsize=1.5, arrowwidth=3,
+                      arrowcolor='#10b981', row=1, col=1)
+    fig.add_annotation(x=9, y=3.8, ax=9, ay=3.0,
+                      xref='x1', yref='y1', axref='x1', ayref='y1',
+                      showarrow=True, arrowhead=2, arrowsize=1.5, arrowwidth=3,
+                      arrowcolor='#10b981', row=1, col=1)
     
-    fig.add_trace(go.Scatter(x=x, y=y_initial_bearf, mode='lines',
-                            line=dict(color='#94a3b8', width=3),
-                            showlegend=False),
-                 row=1, col=2)
-    fig.add_trace(go.Scatter(x=x, y=y_final_bearf, mode='lines',
-                            line=dict(color='#f59e0b', width=3, dash='dash'),
-                            showlegend=False),
-                 row=1, col=2)
+    # Bear Flattening: 2Y sube mucho, 10Y sube poco
+    y_initial_bearf = 2.0 + 0.15*x + 0.005*x**2
+    y_final_bearf = 3.5 + 0.05*x + 0.001*x**2
     
-    # Bull Steepening
-    y_initial_bs = 3.5 + 0.3*x + 0.02*x**1.3
-    y_final_bs = 1.5 + 0.6*x + 0.05*x**1.4
+    fig.add_trace(go.Scatter(
+        x=x, y=y_initial_bearf, mode='lines',
+        line=dict(color='#94a3b8', width=3),
+        showlegend=False
+    ), row=1, col=2)
+    fig.add_trace(go.Scatter(
+        x=x, y=y_final_bearf, mode='lines',
+        line=dict(color='#f59e0b', width=3, dash='dash'),
+        showlegend=False
+    ), row=1, col=2)
     
-    fig.add_trace(go.Scatter(x=x, y=y_initial_bs, mode='lines',
-                            line=dict(color='#94a3b8', width=3),
-                            showlegend=False),
-                 row=2, col=1)
-    fig.add_trace(go.Scatter(x=x, y=y_final_bs, mode='lines',
-                            line=dict(color='#f59e0b', width=3, dash='dash'),
-                            showlegend=False),
-                 row=2, col=1)
+    fig.add_annotation(x=1, y=2.0, ax=1, ay=3.5,
+                      xref='x2', yref='y2', axref='x2', ayref='y2',
+                      showarrow=True, arrowhead=2, arrowsize=1.5, arrowwidth=3,
+                      arrowcolor='#ef4444', row=1, col=2)
+    fig.add_annotation(x=9, y=3.8, ax=9, ay=4.0,
+                      xref='x2', yref='y2', axref='x2', ayref='y2',
+                      showarrow=True, arrowhead=2, arrowsize=1.5, arrowwidth=3,
+                      arrowcolor='#ef4444', row=1, col=2)
     
-    # Bear Steepening
-    y_initial_bears = 1.5 + 0.4*x + 0.03*x**1.3
-    y_final_bears = 2.0 + 0.8*x + 0.08*x**1.4
+    # Bull Steepening: 2Y baja mucho, 10Y baja poco
+    y_initial_bs = 3.0 + 0.08*x + 0.002*x**2
+    y_final_bs = 1.5 + 0.15*x + 0.005*x**2
     
-    fig.add_trace(go.Scatter(x=x, y=y_initial_bears, mode='lines',
-                            line=dict(color='#94a3b8', width=3),
-                            showlegend=False),
-                 row=2, col=2)
-    fig.add_trace(go.Scatter(x=x, y=y_final_bears, mode='lines',
-                            line=dict(color='#f59e0b', width=3, dash='dash'),
-                            showlegend=False),
-                 row=2, col=2)
+    fig.add_trace(go.Scatter(
+        x=x, y=y_initial_bs, mode='lines',
+        line=dict(color='#94a3b8', width=3),
+        showlegend=False
+    ), row=2, col=1)
+    fig.add_trace(go.Scatter(
+        x=x, y=y_final_bs, mode='lines',
+        line=dict(color='#f59e0b', width=3, dash='dash'),
+        showlegend=False
+    ), row=2, col=1)
+    
+    fig.add_annotation(x=1, y=3.0, ax=1, ay=1.5,
+                      xref='x3', yref='y3', axref='x3', ayref='y3',
+                      showarrow=True, arrowhead=2, arrowsize=1.5, arrowwidth=3,
+                      arrowcolor='#10b981', row=2, col=1)
+    fig.add_annotation(x=9, y=4.5, ax=9, ay=4.0,
+                      xref='x3', yref='y3', axref='x3', ayref='y3',
+                      showarrow=True, arrowhead=2, arrowsize=1.5, arrowwidth=3,
+                      arrowcolor='#10b981', row=2, col=1)
+    
+    # Bear Steepening: 2Y sube poco, 10Y sube mucho
+    y_initial_bears = 2.0 + 0.1*x + 0.003*x**2
+    y_final_bears = 2.5 + 0.2*x + 0.008*x**2
+    
+    fig.add_trace(go.Scatter(
+        x=x, y=y_initial_bears, mode='lines',
+        line=dict(color='#94a3b8', width=3),
+        showlegend=False
+    ), row=2, col=2)
+    fig.add_trace(go.Scatter(
+        x=x, y=y_final_bears, mode='lines',
+        line=dict(color='#f59e0b', width=3, dash='dash'),
+        showlegend=False
+    ), row=2, col=2)
+    
+    fig.add_annotation(x=1, y=2.0, ax=1, ay=2.5,
+                      xref='x4', yref='y4', axref='x4', ayref='y4',
+                      showarrow=True, arrowhead=2, arrowsize=1.5, arrowwidth=3,
+                      arrowcolor='#ef4444', row=2, col=2)
+    fig.add_annotation(x=9, y=4.5, ax=9, ay=5.5,
+                      xref='x4', yref='y4', axref='x4', ayref='y4',
+                      showarrow=True, arrowhead=2, arrowsize=1.5, arrowwidth=3,
+                      arrowcolor='#ef4444', row=2, col=2)
     
     fig.update_xaxes(showticklabels=False, showgrid=True, gridcolor='#1e3a4a')
     fig.update_yaxes(showticklabels=False, showgrid=True, gridcolor='#1e3a4a')
@@ -492,11 +538,11 @@ def create_curve_explanation_chart():
         height=650,
         plot_bgcolor='#0f172a',
         paper_bgcolor='#1e293b',
-        font=dict(color='#e2e8f0', size=14),
+        font=dict(color='#e2e8f0', size=13),
         showlegend=False,
         title=dict(
-            text="Guía Visual: Movimientos de la Curva de Rendimiento",
-            font=dict(size=20, color='#06b6d4', family='Arial Black'),
+            text="📚 Guía Visual: Movimientos de la Curva de Rendimiento<br><sub>Gris sólido = Curva inicial | Naranja punteado = Curva final | 🟢 Verde = Baja | 🔴 Rojo = Sube</sub>",
+            font=dict(size=18, color='#06b6d4'),
             x=0.5,
             xanchor='center'
         )
@@ -608,7 +654,7 @@ def main():
                 )
                 st.plotly_chart(fig, use_container_width=True)
         else:
-            st.error("❌ No se pudieron cargar los datos de política monetaria.")
+            st.error("❌ No se pudieron cargar los datos de política monetaria. Por favor, intente con un rango de fechas diferente.")
     
     # TAB 2: INFLACIÓN & LABORAL
     with tab2:
@@ -863,14 +909,12 @@ def main():
             **Leyenda:**
             - **Línea sólida gris:** Curva inicial
             - **Línea punteada naranja:** Curva final
-            - **Flechas verdes (🟢):** Tasas bajando
-            - **Flechas rojas (🔴):** Tasas subiendo
+            - **🟢 Tasas bajando** = Bull (bueno para bonos)
+            - **🔴 Tasas subiendo** = Bear (malo para bonos)
             
             **Interpretación:**
             - **Flattening:** El spread se reduce (curva se aplana)
             - **Steepening:** El spread aumenta (curva se empina)
-            - **Bull:** Movimiento con tasas bajando (bueno para bonos)
-            - **Bear:** Movimiento con tasas subiendo (malo para bonos)
             """)
             
             fig_guide = create_curve_explanation_chart()
@@ -1093,43 +1137,35 @@ def main():
         
         with st.expander("📊 Curvas de Rendimiento - Guía Detallada"):
             st.markdown("""
-            ### Movimientos Principales de la Curva
+            ### Movimientos Principales
             
-            #### 🟢 Bull Flattening (Aplanamiento Alcista)
-            - **Qué pasa:** El spread entre tasas largas y cortas se reduce
-            - **Movimiento:** Tasas cortas SUBEN menos, tasas largas BAJAN más
+            #### 🟢 Bull Flattening
+            - **Movimiento:** Tasas cortas ↑poco, tasas largas ↓mucho
             - **Significado:** Expectativas de desaceleración económica
             
-            #### 🔴 Bear Flattening (Aplanamiento Bajista)
-            - **Qué pasa:** El spread se reduce con tasas subiendo
-            - **Movimiento:** Tasas cortas SUBEN más, tasas largas SUBEN menos
-            - **Significado:** La Fed está endureciendo agresivamente
+            #### 🔴 Bear Flattening
+            - **Movimiento:** Tasas cortas ↑mucho, tasas largas ↑poco
+            - **Significado:** Fed endureciendo agresivamente
             
-            #### 🟢 Bull Steepening (Empinamiento Alcista)
-            - **Qué pasa:** El spread aumenta con tasas bajando
-            - **Movimiento:** Tasas cortas BAJAN más, tasas largas BAJAN menos
-            - **Significado:** Expectativas de estímulo monetario agresivo
+            #### 🟢 Bull Steepening
+            - **Movimiento:** Tasas cortas ↓mucho, tasas largas ↓poco
+            - **Significado:** Fed recortando tasas (recesión)
             
-            #### 🔴 Bear Steepening (Empinamiento Bajista)
-            - **Qué pasa:** El spread aumenta con tasas subiendo
-            - **Movimiento:** Tasas cortas SUBEN menos, tasas largas SUBEN más
-            - **Significado:** Expectativas de inflación a largo plazo
+            #### 🔴 Bear Steepening
+            - **Movimiento:** Tasas cortas ↑poco, tasas largas ↑mucho
+            - **Significado:** Expectativas de inflación largo plazo
             
-            ### 🦋 Butterfly Spread (Curvatura)
+            ### 🦋 Butterfly Spread
             
-            **Fórmula:** Butterfly(2,5,10) = 2×Yield₅ - Yield₂ - Yield₁₀
+            **Fórmula:** Butterfly = 2×Yield₅ - Yield₂ - Yield₁₀
             
-            **Interpretación:**
-            - **Butterfly Negativo (<0):** Curva cóncava - El 5Y está más bajo que el promedio
-            - **Butterfly Positivo (>0):** Curva convexa - El 5Y está más alto que el promedio
-            
-            **Movimientos:**
+            - **Negativo (<0):** Curva cóncava - 5Y más bajo que promedio
+            - **Positivo (>0):** Curva convexa - 5Y más alto que promedio
             - **Steepener Twist:** Butterfly se vuelve más negativo
             - **Flattener Twist:** Butterfly se vuelve más positivo
-            
-            **Curva Invertida:** Cuando tasas cortas > tasas largas - Señal de alerta de recesión
             """)
     
+    # Footer
     st.markdown("""
     <div class="collaboration-footer">
         <p class="collab-text">Desarrollado en colaboración con</p>
