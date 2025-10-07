@@ -589,6 +589,9 @@ def create_curve_explanation_chart():
     )
     
     return fig
+
+def info_box(title, content):
+    """Crear caja de información estilizada"""
     st.markdown(f"""
     <div style='background: linear-gradient(135deg, #1e293b 0%, #334155 100%); 
                 padding: 15px; border-radius: 10px; border-left: 4px solid #06b6d4; margin: 10px 0;'>
