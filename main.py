@@ -111,6 +111,14 @@ st.markdown("""
     .main .block-container {
         padding-bottom: 100px;
     }
+    
+    /* Logo styling */
+    img {
+        border-radius: 10px;
+        background: white;
+        padding: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -253,8 +261,19 @@ def create_empty_chart(title):
     return fig
 
 def main():
-    st.markdown("<h1>📊 Análisis Económico FRED</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color: #94a3b8; font-size: 1.2rem;'>Plataforma de Visualización de Datos Económicos de la Reserva Federal</p>", unsafe_allow_html=True)
+    # Header con logo
+    col1, col2, col3 = st.columns([1, 4, 1])
+    
+    with col1:
+        try:
+            st.image("marot.avif", width=120)
+        except:
+            pass
+    
+    with col2:
+        st.markdown("<h1>📊 Análisis Económico FRED</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #94a3b8; font-size: 1.2rem;'>Plataforma de Visualización de Datos Económicos de la Reserva Federal</p>", unsafe_allow_html=True)
+    
     st.markdown("---")
     
     with st.sidebar:
@@ -776,6 +795,14 @@ def main():
         </p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Logo adicional en sidebar
+    with st.sidebar:
+        st.markdown("---")
+        try:
+            st.image("marot.avif", use_column_width=True)
+        except:
+            pass
 
 if __name__ == "__main__":
     main()
