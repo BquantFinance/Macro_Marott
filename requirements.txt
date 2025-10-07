@@ -4,3 +4,4 @@ yfinance
 pandas
 pandas_datareader
 lxml
+scipy
