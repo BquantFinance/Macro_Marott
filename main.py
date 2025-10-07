@@ -561,19 +561,19 @@ def create_curve_explanation_chart():
     # Añadir etiquetas de madurez
     for i in range(1, 5):
         fig.add_annotation(
-            x=0, y=0, text="2Y", xref=f'x{i}', yref=f'y{i} domain',
+            x=0, y=0, text="2Y", xref=f'x{i}', yref=f'y{i}domain',
             showarrow=False, font=dict(size=10, color='#64748b'),
-            xanchor='left', yanchor='top', ax=0, ay=-10
+            xanchor='left', yanchor='top'
         )
         fig.add_annotation(
-            x=5, y=0, text="5Y", xref=f'x{i}', yref=f'y{i} domain',
+            x=5, y=0, text="5Y", xref=f'x{i}', yref=f'y{i}domain',
             showarrow=False, font=dict(size=10, color='#64748b'),
-            xanchor='center', yanchor='top', ax=0, ay=-10
+            xanchor='center', yanchor='top'
         )
         fig.add_annotation(
-            x=10, y=0, text="10Y", xref=f'x{i}', yref=f'y{i} domain',
+            x=10, y=0, text="10Y", xref=f'x{i}', yref=f'y{i}domain',
             showarrow=False, font=dict(size=10, color='#64748b'),
-            xanchor='right', yanchor='top', ax=0, ay=-10
+            xanchor='right', yanchor='top'
         )
     
     fig.update_layout(
