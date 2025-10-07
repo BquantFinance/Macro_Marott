@@ -153,6 +153,19 @@ def get_last_valid(df, column):
         return None
     return series.iloc[-1]
 
+def calculate_butterfly(df, short_col, mid_col, long_col):
+    """
+    Calcular butterfly spread (twist/curvatura de la curva)
+    Butterfly = 2*mid - short - long
+    
+    Valores negativos = curva cóncava (belly baja)
+    Valores positivos = curva convexa (belly sube)
+    """
+    if all(col in df.columns for col in [short_col, mid_col, long_col]):
+        butterfly = 2 * df[mid_col] - df[short_col] - df[long_col]
+        return butterfly * 100  # Convertir a basis points
+    return None
+
 def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=1.0):
     """Calcular métricas de curva de rendimiento"""
     # Calcular spread
@@ -475,7 +488,7 @@ def create_empty_chart(title):
     return fig
 
 def create_curve_explanation_chart():
-    """Crear gráfico explicativo de movimientos de curva"""
+    """Crear gráfico explicativo de movimientos de curva con curvas más pronunciadas"""
     fig = make_subplots(
         rows=2, cols=2,
         subplot_titles=('Bull Flattening', 'Bear Flattening', 
@@ -484,92 +497,87 @@ def create_curve_explanation_chart():
         horizontal_spacing=0.12
     )
     
-    # Datos de ejemplo para las curvas
-    x = [0, 1, 2]  # Short, Medium, Long
+    # Datos de ejemplo para las curvas (más puntos para curvas más suaves)
+    x = np.linspace(0, 10, 50)  # Short to Long maturity
+    x_labels = [2, 5, 10]  # Años para etiquetas
     
-    # Bull Flattening: Front sube menos, back baja más
-    y_initial_bf = [1, 2, 3]
-    y_final_bf = [1.2, 2.1, 2.5]
+    # Bull Flattening: Front sube poco, back baja mucho
+    # Curvas más pronunciadas usando interpolación
+    y_initial_bf = 1.5 + 0.8*x + 0.05*x**1.3
+    y_final_bf = 2.0 + 0.3*x + 0.02*x**1.5
     
     fig.add_trace(go.Scatter(x=x, y=y_initial_bf, mode='lines', 
-                            line=dict(color='#94a3b8', width=2, dash='solid'),
+                            line=dict(color='#94a3b8', width=3),
                             showlegend=False, name='Inicial'),
                  row=1, col=1)
     fig.add_trace(go.Scatter(x=x, y=y_final_bf, mode='lines',
-                            line=dict(color='#f59e0b', width=2, dash='dash'),
+                            line=dict(color='#f59e0b', width=3, dash='dash'),
                             showlegend=False, name='Final'),
                  row=1, col=1)
-    # Flechas
-    fig.add_annotation(x=0, y=1, ax=0, ay=1.2, xref='x1', yref='y1', axref='x1', ayref='y1',
-                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#10b981',
-                      row=1, col=1)
-    fig.add_annotation(x=2, y=3, ax=2, ay=2.5, xref='x1', yref='y1', axref='x1', ayref='y1',
-                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#10b981',
-                      row=1, col=1)
     
-    # Bear Flattening: Front sube más, back sube menos
-    y_initial_bearf = [1, 2, 3]
-    y_final_bearf = [2, 2.8, 3.2]
+    # Bear Flattening: Front sube mucho, back sube poco
+    y_initial_bearf = 2.0 + 0.5*x + 0.03*x**1.4
+    y_final_bearf = 3.5 + 0.2*x + 0.01*x**1.3
     
     fig.add_trace(go.Scatter(x=x, y=y_initial_bearf, mode='lines',
-                            line=dict(color='#94a3b8', width=2, dash='solid'),
+                            line=dict(color='#94a3b8', width=3),
                             showlegend=False),
                  row=1, col=2)
     fig.add_trace(go.Scatter(x=x, y=y_final_bearf, mode='lines',
-                            line=dict(color='#f59e0b', width=2, dash='dash'),
+                            line=dict(color='#f59e0b', width=3, dash='dash'),
                             showlegend=False),
                  row=1, col=2)
-    fig.add_annotation(x=0, y=1, ax=0, ay=2, xref='x2', yref='y2', axref='x2', ayref='y2',
-                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#ef4444',
-                      row=1, col=2)
-    fig.add_annotation(x=2, y=3, ax=2, ay=3.2, xref='x2', yref='y2', axref='x2', ayref='y2',
-                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#ef4444',
-                      row=1, col=2)
     
-    # Bull Steepening: Front baja más, back baja menos
-    y_initial_bs = [2, 2.5, 3]
-    y_final_bs = [1, 1.8, 2.7]
+    # Bull Steepening: Front baja mucho, back baja poco
+    y_initial_bs = 3.5 + 0.3*x + 0.02*x**1.3
+    y_final_bs = 1.5 + 0.6*x + 0.05*x**1.4
     
     fig.add_trace(go.Scatter(x=x, y=y_initial_bs, mode='lines',
-                            line=dict(color='#94a3b8', width=2, dash='solid'),
+                            line=dict(color='#94a3b8', width=3),
                             showlegend=False),
                  row=2, col=1)
     fig.add_trace(go.Scatter(x=x, y=y_final_bs, mode='lines',
-                            line=dict(color='#f59e0b', width=2, dash='dash'),
+                            line=dict(color='#f59e0b', width=3, dash='dash'),
                             showlegend=False),
                  row=2, col=1)
-    fig.add_annotation(x=0, y=2, ax=0, ay=1, xref='x3', yref='y3', axref='x3', ayref='y3',
-                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#10b981',
-                      row=2, col=1)
-    fig.add_annotation(x=2, y=3, ax=2, ay=2.7, xref='x3', yref='y3', axref='x3', ayref='y3',
-                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#10b981',
-                      row=2, col=1)
     
-    # Bear Steepening: Front sube menos, back sube más
-    y_initial_bears = [1, 2, 3]
-    y_final_bears = [1.3, 2.5, 3.8]
+    # Bear Steepening: Front sube poco, back sube mucho
+    y_initial_bears = 1.5 + 0.4*x + 0.03*x**1.3
+    y_final_bears = 2.0 + 0.8*x + 0.08*x**1.4
     
     fig.add_trace(go.Scatter(x=x, y=y_initial_bears, mode='lines',
-                            line=dict(color='#94a3b8', width=2, dash='solid'),
+                            line=dict(color='#94a3b8', width=3),
                             showlegend=False),
                  row=2, col=2)
     fig.add_trace(go.Scatter(x=x, y=y_final_bears, mode='lines',
-                            line=dict(color='#f59e0b', width=2, dash='dash'),
+                            line=dict(color='#f59e0b', width=3, dash='dash'),
                             showlegend=False),
                  row=2, col=2)
-    fig.add_annotation(x=0, y=1, ax=0, ay=1.3, xref='x4', yref='y4', axref='x4', ayref='y4',
-                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#ef4444',
-                      row=2, col=2)
-    fig.add_annotation(x=2, y=3, ax=2, ay=3.8, xref='x4', yref='y4', axref='x4', ayref='y4',
-                      showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor='#ef4444',
-                      row=2, col=2)
     
     # Layout
-    fig.update_xaxes(showticklabels=False, showgrid=False)
-    fig.update_yaxes(showticklabels=False, showgrid=False)
+    fig.update_xaxes(showticklabels=False, showgrid=True, gridcolor='#1e3a4a')
+    fig.update_yaxes(showticklabels=False, showgrid=True, gridcolor='#1e3a4a')
+    
+    # Añadir etiquetas de madurez
+    for i in range(1, 5):
+        fig.add_annotation(
+            x=0, y=0, text="2Y", xref=f'x{i}', yref=f'y{i} domain',
+            showarrow=False, font=dict(size=10, color='#64748b'),
+            xanchor='left', yanchor='top', ax=0, ay=-10
+        )
+        fig.add_annotation(
+            x=5, y=0, text="5Y", xref=f'x{i}', yref=f'y{i} domain',
+            showarrow=False, font=dict(size=10, color='#64748b'),
+            xanchor='center', yanchor='top', ax=0, ay=-10
+        )
+        fig.add_annotation(
+            x=10, y=0, text="10Y", xref=f'x{i}', yref=f'y{i} domain',
+            showarrow=False, font=dict(size=10, color='#64748b'),
+            xanchor='right', yanchor='top', ax=0, ay=-10
+        )
     
     fig.update_layout(
-        height=600,
+        height=650,
         plot_bgcolor='#0f172a',
         paper_bgcolor='#1e293b',
         font=dict(color='#e2e8f0', size=14),
@@ -579,13 +587,7 @@ def create_curve_explanation_chart():
             font=dict(size=20, color='#06b6d4', family='Arial Black'),
             x=0.5,
             xanchor='center'
-        ),
-        annotations=[
-            dict(text="🟢 = Tasas bajan | 🔴 = Tasas suben", 
-                 xref="paper", yref="paper",
-                 x=0.5, y=-0.05, showarrow=False,
-                 font=dict(size=12, color='#94a3b8'))
-        ]
+        )
     )
     
     return fig
@@ -1027,6 +1029,90 @@ def main():
                     )
                     st.plotly_chart(fig, use_container_width=True)
         
+        # ANÁLISIS BUTTERFLY (TWIST)
+        st.markdown("### 🦋 Análisis Butterfly - Curvatura de la Curva")
+        
+        with st.expander("ℹ️ ¿Qué es el Butterfly Spread?"):
+            info_box("Butterfly (Twist)", 
+                    "El butterfly mide la curvatura de la curva de rendimientos. "
+                    "Se calcula como: Butterfly = 2×Yield_Mid - Yield_Short - Yield_Long. "
+                    "Valores negativos indican una curva cóncava (el medio baja más), "
+                    "valores positivos indican una curva convexa (el medio sube más).")
+        
+        # Obtener datos para butterfly 2-5-10
+        butterfly_series = {
+            'DGS2': 'DGS2',
+            'DGS5': 'DGS5', 
+            'DGS10': 'DGS10'
+        }
+        
+        with st.spinner('Calculando butterfly spread...'):
+            butterfly_data = fetch_multiple_series(butterfly_series, start_date, end_date)
+        
+        if butterfly_data is not None and not butterfly_data.empty:
+            # Calcular butterfly
+            butterfly = calculate_butterfly(butterfly_data, 'DGS2', 'DGS5', 'DGS10')
+            
+            if butterfly is not None:
+                butterfly_df = pd.DataFrame({'Butterfly 2-5-10': butterfly}).dropna()
+                
+                if not butterfly_df.empty:
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        # Gráfico de butterfly
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(
+                            x=butterfly_df.index,
+                            y=butterfly_df['Butterfly 2-5-10'],
+                            mode='lines',
+                            line=dict(color='#8b5cf6', width=2),
+                            fill='tozeroy',
+                            fillcolor='rgba(139, 92, 246, 0.2)',
+                            name='Butterfly'
+                        ))
+                        
+                        # Línea de referencia en cero
+                        fig.add_hline(y=0, line_dash="dash", line_color="#475569", 
+                                     annotation_text="Neutral", annotation_position="right")
+                        
+                        fig.update_layout(
+                            title=dict(text="Butterfly Spread 2-5-10 Años", 
+                                      font=dict(size=16, color='#06b6d4')),
+                            xaxis_title="Fecha",
+                            yaxis_title="Basis Points",
+                            plot_bgcolor='#0f172a',
+                            paper_bgcolor='#1e293b',
+                            font=dict(color='#e2e8f0', size=11),
+                            xaxis=dict(showgrid=True, gridcolor='#334155'),
+                            yaxis=dict(showgrid=True, gridcolor='#334155'),
+                            height=400
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    with col2:
+                        st.markdown("#### 📊 Interpretación")
+                        
+                        current_butterfly = butterfly_df['Butterfly 2-5-10'].iloc[-1]
+                        
+                        if current_butterfly < -20:
+                            status = "🔵 Muy Cóncava"
+                            interpretation = "El 5Y está significativamente más bajo que el promedio de 2Y y 10Y. Curva muy empinada en el medio."
+                        elif current_butterfly < 0:
+                            status = "🔷 Cóncava"
+                            interpretation = "El 5Y está por debajo del promedio de 2Y y 10Y. Curvatura normal."
+                        elif current_butterfly < 20:
+                            status = "🔶 Convexa"
+                            interpretation = "El 5Y está por encima del promedio de 2Y y 10Y. Curva aplanándose."
+                        else:
+                            status = "🔴 Muy Convexa"
+                            interpretation = "El 5Y está significativamente más alto. Posible inversión en el medio."
+                        
+                        st.metric("Butterfly Actual", f"{current_butterfly:.2f} bps")
+                        st.markdown(f"**Estado:** {status}")
+                        st.markdown(f"*{interpretation}*")
+        
         st.markdown("### 📊 Curvas Históricas Adicionales")
         
         # Otros spreads importantes
@@ -1137,6 +1223,35 @@ def main():
             #### 🔄 Twists (Torsiones)
             - **Qué pasa:** Movimientos mixtos no clasificables
             - **Significado:** Incertidumbre o transición entre escenarios
+            
+            ### 🦋 Butterfly Spread (Curvatura)
+            
+            El **butterfly spread** mide la curvatura de la curva de rendimientos y detecta movimientos de "twist":
+            
+            **Fórmula:** Butterfly(2,5,10) = 2×Yield₅ - Yield₂ - Yield₁₀
+            
+            **Interpretación:**
+            - **Butterfly Negativo (<0):** Curva cóncava
+              - El rendimiento del 5Y está MÁS BAJO que el promedio del 2Y y 10Y
+              - La "panza" de la curva está hundida
+              - Típico cuando hay expectativas de cambio de política monetaria a medio plazo
+            
+            - **Butterfly Positivo (>0):** Curva convexa  
+              - El rendimiento del 5Y está MÁS ALTO que el promedio del 2Y y 10Y
+              - La "panza" de la curva está elevada
+              - Puede indicar incertidumbre sobre el plazo medio
+            
+            - **Butterfly cercano a 0:** Curva relativamente lineal
+            
+            **Movimientos del Butterfly:**
+            - **Steepener Twist:** Butterfly se vuelve más negativo (panza baja más)
+            - **Flattener Twist:** Butterfly se vuelve más positivo (panza sube)
+            
+            **Aplicación práctica:**
+            Los traders de bonos usan el butterfly para:
+            1. Identificar oportunidades de arbitraje
+            2. Predecir cambios en la política monetaria
+            3. Gestionar el riesgo de curva en carteras de renta fija
             
             ### ¿Cómo Interpretar?
             
