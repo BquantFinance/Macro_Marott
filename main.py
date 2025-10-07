@@ -864,12 +864,20 @@ def main():
                 st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                fig = create_line_chart(
-                    data[['HSN1FNSA', 'EXHOSLUSM495S']].dropna(how='all'),
-                    "Ventas de Viviendas", "Miles",
-                    colors=['#10b981', '#f59e0b']
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                if 'HSN1FNSA' in data.columns and 'EXHOSLUSM495S' in data.columns:
+                    fig = create_dual_axis_chart(
+                        data, 'HSN1FNSA', 'EXHOSLUSM495S',
+                        "Ventas de Viviendas",
+                        "Nuevas (Miles)", "Existentes (Miles)"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    fig = create_line_chart(
+                        data[['HSN1FNSA', 'EXHOSLUSM495S']].dropna(how='all'),
+                        "Ventas de Viviendas", "Miles",
+                        colors=['#10b981', '#f59e0b']
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
             
             st.markdown("### 💰 Tasas y Asequibilidad")
             
