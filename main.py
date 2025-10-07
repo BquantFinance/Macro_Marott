@@ -146,6 +146,15 @@ def safe_value(value, format_str="{:.2f}"):
     except:
         return "N/A"
 
+def get_last_valid(df, column):
+    """Obtener el último valor válido (no-NaN) de una columna"""
+    if column not in df.columns:
+        return None
+    series = df[column].dropna()
+    if len(series) == 0:
+        return None
+    return series.iloc[-1]
+
 def create_line_chart(df, title, y_title, colors=None):
     """Crear gráfico de líneas"""
     if df is None or df.empty:
@@ -317,31 +326,33 @@ def main():
             data = fetch_multiple_series(monetary_series, start_date, end_date)
         
         if data is not None and not data.empty:
-            latest = data.iloc[-1]
-            prev = data.iloc[-30] if len(data) > 30 else data.iloc[0]
+            # Obtener últimos valores válidos
+            latest_ff = get_last_valid(data, 'FEDFUNDS')
+            latest_dgs10 = get_last_valid(data, 'DGS10')
+            latest_dgs2 = get_last_valid(data, 'DGS2')
+            latest_spread = get_last_valid(data, 'T10Y2Y')
+            latest_t5yie = get_last_valid(data, 'T5YIE')
+            
+            # Para calcular cambios, usar valores de hace 30 días
+            prev_ff = data['FEDFUNDS'].dropna().iloc[-30] if len(data['FEDFUNDS'].dropna()) > 30 else None
+            prev_dgs10 = data['DGS10'].dropna().iloc[-30] if len(data['DGS10'].dropna()) > 30 else None
             
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                val = latest.get('FEDFUNDS')
-                prev_val = prev.get('FEDFUNDS')
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Fed Funds", safe_value(val, "{:.2f}%"), f"{change:+.2f}%" if change != 0 else "")
+                change = latest_ff - prev_ff if (latest_ff and prev_ff and not pd.isna(latest_ff) and not pd.isna(prev_ff)) else 0
+                st.metric("Fed Funds", safe_value(latest_ff, "{:.2f}%"), f"{change:+.2f}%" if change != 0 else "")
             
             with col2:
-                val = latest.get('DGS10')
-                prev_val = prev.get('DGS10')
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Tesoro 10A", safe_value(val, "{:.2f}%"), f"{change:+.2f}%" if change != 0 else "")
+                change = latest_dgs10 - prev_dgs10 if (latest_dgs10 and prev_dgs10 and not pd.isna(latest_dgs10) and not pd.isna(prev_dgs10)) else 0
+                st.metric("Tesoro 10A", safe_value(latest_dgs10, "{:.2f}%"), f"{change:+.2f}%" if change != 0 else "")
             
             with col3:
-                val = latest.get('T10Y2Y')
-                st.metric("Spread 10A-2A", safe_value(val, "{:.2f}%"), 
-                         "Invertida" if (val and val < 0) else "Normal")
+                st.metric("Spread 10A-2A", safe_value(latest_spread, "{:.2f}%"), 
+                         "Invertida" if (latest_spread and latest_spread < 0) else "Normal")
             
             with col4:
-                val = latest.get('T5YIE')
-                st.metric("Inflación Esperada 5A", safe_value(val, "{:.2f}%"))
+                st.metric("Inflación Esperada 5A", safe_value(latest_t5yie, "{:.2f}%"))
             
             st.markdown("---")
             
@@ -389,23 +400,23 @@ def main():
             
             col1, col2, col3, col4 = st.columns(4)
             
-            latest_yoy = yoy.iloc[-1]
+            # Obtener últimos valores YoY válidos
+            latest_cpi = get_last_valid(yoy, 'CPIAUCSL')
+            latest_core_cpi = get_last_valid(yoy, 'CPILFESL')
+            latest_pce = get_last_valid(yoy, 'PCEPI')
+            latest_core_pce = get_last_valid(yoy, 'PCEPILFE')
             
             with col1:
-                val = latest_yoy.get('CPIAUCSL')
-                st.metric("IPC YoY", safe_value(val, "{:.2f}%"))
+                st.metric("IPC YoY", safe_value(latest_cpi, "{:.2f}%"))
             
             with col2:
-                val = latest_yoy.get('CPILFESL')
-                st.metric("IPC Subyacente YoY", safe_value(val, "{:.2f}%"))
+                st.metric("IPC Subyacente YoY", safe_value(latest_core_cpi, "{:.2f}%"))
             
             with col3:
-                val = latest_yoy.get('PCEPI')
-                st.metric("PCE YoY", safe_value(val, "{:.2f}%"))
+                st.metric("PCE YoY", safe_value(latest_pce, "{:.2f}%"))
             
             with col4:
-                val = latest_yoy.get('PCEPILFE')
-                st.metric("PCE Subyacente YoY", safe_value(val, "{:.2f}%"))
+                st.metric("PCE Subyacente YoY", safe_value(latest_core_pce, "{:.2f}%"))
             
             st.markdown("---")
             
@@ -446,31 +457,32 @@ def main():
             data = fetch_multiple_series(labor_series, start_date, end_date)
         
         if data is not None and not data.empty:
-            latest = data.iloc[-1]
-            prev = data.iloc[-2] if len(data) > 1 else data.iloc[0]
+            # Obtener últimos valores válidos
+            latest_unrate = get_last_valid(data, 'UNRATE')
+            latest_payems = get_last_valid(data, 'PAYEMS')
+            latest_wage = get_last_valid(data, 'CES0500000003')
+            latest_jolts = get_last_valid(data, 'JTSJOL')
+            
+            # Valores previos para calcular cambios
+            prev_unrate = data['UNRATE'].dropna().iloc[-2] if len(data['UNRATE'].dropna()) > 1 else None
+            prev_payems = data['PAYEMS'].dropna().iloc[-2] if len(data['PAYEMS'].dropna()) > 1 else None
             
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                val = latest.get('UNRATE')
-                prev_val = prev.get('UNRATE')
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Desempleo", safe_value(val, "{:.1f}%"), 
+                change = latest_unrate - prev_unrate if (latest_unrate and prev_unrate and not pd.isna(latest_unrate) and not pd.isna(prev_unrate)) else 0
+                st.metric("Desempleo", safe_value(latest_unrate, "{:.1f}%"), 
                          f"{change:+.1f}%" if change != 0 else "", delta_color="inverse")
             
             with col2:
-                val = latest.get('PAYEMS')
-                prev_val = prev.get('PAYEMS')
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Nóminas", safe_value(val, "{:.0f}K"), f"{change:+.0f}K" if change != 0 else "")
+                change = latest_payems - prev_payems if (latest_payems and prev_payems and not pd.isna(latest_payems) and not pd.isna(prev_payems)) else 0
+                st.metric("Nóminas", safe_value(latest_payems, "{:.0f}K"), f"{change:+.0f}K" if change != 0 else "")
             
             with col3:
-                val = latest.get('CES0500000003')
-                st.metric("Salario por Hora", safe_value(val, "${:.2f}"))
+                st.metric("Salario por Hora", safe_value(latest_wage, "${:.2f}"))
             
             with col4:
-                val = latest.get('JTSJOL')
-                st.metric("Vacantes (JOLTS)", safe_value(val, "{:.0f}K"))
+                st.metric("Vacantes (JOLTS)", safe_value(latest_jolts, "{:.0f}K"))
             
             st.markdown("---")
             
