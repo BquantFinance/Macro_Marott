@@ -45,6 +45,11 @@ st.markdown("""
         padding-bottom: 0.5rem;
     }
     
+    h3 {
+        color: #38bdf8;
+        font-weight: 600;
+    }
+    
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: #1e293b;
@@ -90,7 +95,6 @@ st.markdown("""
         text-decoration: none;
         font-weight: 600;
         margin: 0 15px;
-        transition: color 0.3s;
     }
     
     .collaboration-footer a:hover {
@@ -111,17 +115,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_fred_data(series_id, start_date, end_date):
-    """Obtener datos de FRED usando pandas_datareader"""
-    try:
-        df = web.DataReader(series_id, 'fred', start_date, end_date)
-        df = df.dropna()  # Eliminar valores NaN
-        return df
-    except Exception as e:
-        st.error(f"Error al obtener {series_id}: {str(e)}")
-        return None
-
-@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_multiple_series(series_dict, start_date, end_date):
     """Obtener múltiples series de FRED y combinarlas"""
     dfs = {}
@@ -131,21 +124,21 @@ def fetch_multiple_series(series_dict, start_date, end_date):
         try:
             df = web.DataReader(series_id, 'fred', start_date, end_date)
             if df is not None and not df.empty:
-                dfs[name] = df.iloc[:, 0]  # Tomar la primera columna
+                dfs[name] = df.iloc[:, 0]
         except Exception as e:
-            errors.append(f"{name} ({series_id}): {str(e)}")
+            errors.append(f"{name}")
     
-    if errors:
-        st.warning(f"No se pudieron obtener algunas series: {', '.join(errors)}")
+    if errors and len(errors) < len(series_dict):
+        st.info(f"Algunas series no disponibles: {', '.join(errors[:5])}")
     
     if dfs:
         combined = pd.DataFrame(dfs)
-        combined = combined.dropna(how='all')  # Eliminar filas con todos NaN
+        combined = combined.dropna(how='all')
         return combined
     return None
 
-def safe_metric_value(value, format_str="{:.2f}"):
-    """Formatear valor de métrica de forma segura"""
+def safe_value(value, format_str="{:.2f}"):
+    """Formatear valor de forma segura"""
     try:
         if pd.isna(value) or value is None:
             return "N/A"
@@ -154,119 +147,87 @@ def safe_metric_value(value, format_str="{:.2f}"):
         return "N/A"
 
 def create_line_chart(df, title, y_title, colors=None):
-    """Crear un gráfico de líneas"""
+    """Crear gráfico de líneas"""
     if df is None or df.empty:
         return create_empty_chart(title)
     
     fig = go.Figure()
-    
     if colors is None:
-        colors = ['#06b6d4', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
+        colors = ['#06b6d4', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6']
     
     for i, col in enumerate(df.columns):
-        if df[col].notna().any():  # Solo graficar si hay datos
+        if df[col].notna().any():
             fig.add_trace(go.Scatter(
-                x=df.index,
-                y=df[col],
-                name=col,
-                mode='lines',
+                x=df.index, y=df[col], name=col, mode='lines',
                 line=dict(width=3, color=colors[i % len(colors)]),
-                hovertemplate='<b>%{fullData.name}</b><br>Fecha: %{x}<br>Valor: %{y:.2f}<extra></extra>'
+                hovertemplate='<b>%{fullData.name}</b><br>%{y:.2f}<extra></extra>'
             ))
     
     fig.update_layout(
         title=dict(text=title, font=dict(size=20, color='#06b6d4', family='Arial Black')),
-        xaxis_title="Fecha",
-        yaxis_title=y_title,
-        hovermode='x unified',
-        plot_bgcolor='#0f172a',
-        paper_bgcolor='#1e293b',
+        xaxis_title="Fecha", yaxis_title=y_title, hovermode='x unified',
+        plot_bgcolor='#0f172a', paper_bgcolor='#1e293b',
         font=dict(color='#e2e8f0', size=12),
-        xaxis=dict(showgrid=True, gridcolor='#334155', linecolor='#475569'),
-        yaxis=dict(showgrid=True, gridcolor='#334155', linecolor='#475569'),
+        xaxis=dict(showgrid=True, gridcolor='#334155'),
+        yaxis=dict(showgrid=True, gridcolor='#334155'),
         legend=dict(bgcolor='#1e293b', bordercolor='#334155', borderwidth=1),
         height=500
     )
-    
     return fig
 
 def create_area_chart(df, title, y_title, color='#06b6d4'):
-    """Crear un gráfico de área"""
+    """Crear gráfico de área"""
     if df is None or df.empty:
         return create_empty_chart(title)
     
     fig = go.Figure()
-    
     for col in df.columns:
         if df[col].notna().any():
             fig.add_trace(go.Scatter(
-                x=df.index,
-                y=df[col],
-                name=col,
-                mode='lines',
-                fill='tozeroy',
-                line=dict(width=2, color=color),
-                fillcolor='rgba(6, 182, 212, 0.3)',
-                hovertemplate='<b>%{fullData.name}</b><br>Fecha: %{x}<br>Valor: %{y:.2f}<extra></extra>'
+                x=df.index, y=df[col], name=col, mode='lines',
+                fill='tozeroy', line=dict(width=2, color=color),
+                fillcolor='rgba(6, 182, 212, 0.3)'
             ))
     
     fig.update_layout(
         title=dict(text=title, font=dict(size=20, color='#06b6d4', family='Arial Black')),
-        xaxis_title="Fecha",
-        yaxis_title=y_title,
-        hovermode='x unified',
-        plot_bgcolor='#0f172a',
-        paper_bgcolor='#1e293b',
+        xaxis_title="Fecha", yaxis_title=y_title,
+        plot_bgcolor='#0f172a', paper_bgcolor='#1e293b',
         font=dict(color='#e2e8f0', size=12),
-        xaxis=dict(showgrid=True, gridcolor='#334155', linecolor='#475569'),
-        yaxis=dict(showgrid=True, gridcolor='#334155', linecolor='#475569'),
+        xaxis=dict(showgrid=True, gridcolor='#334155'),
+        yaxis=dict(showgrid=True, gridcolor='#334155'),
         height=500
     )
-    
     return fig
 
 def create_dual_axis_chart(df, col1, col2, title, y1_title, y2_title):
-    """Crear un gráfico de doble eje"""
+    """Crear gráfico de doble eje"""
     if df is None or df.empty or col1 not in df.columns or col2 not in df.columns:
         return create_empty_chart(title)
     
-    # Filtrar datos válidos
     valid_data = df[[col1, col2]].dropna()
-    
     if valid_data.empty:
         return create_empty_chart(title)
     
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     
     fig.add_trace(
-        go.Scatter(
-            x=valid_data.index, 
-            y=valid_data[col1], 
-            name=col1,
-            line=dict(color='#06b6d4', width=3),
-            hovertemplate=f'<b>{col1}</b><br>%{{y:.2f}}<extra></extra>'
-        ),
+        go.Scatter(x=valid_data.index, y=valid_data[col1], name=col1,
+                  line=dict(color='#06b6d4', width=3)),
         secondary_y=False
     )
     
     fig.add_trace(
-        go.Scatter(
-            x=valid_data.index, 
-            y=valid_data[col2], 
-            name=col2,
-            line=dict(color='#ec4899', width=3),
-            hovertemplate=f'<b>{col2}</b><br>%{{y:.2f}}<extra></extra>'
-        ),
+        go.Scatter(x=valid_data.index, y=valid_data[col2], name=col2,
+                  line=dict(color='#ec4899', width=3)),
         secondary_y=True
     )
     
     fig.update_layout(
         title=dict(text=title, font=dict(size=20, color='#06b6d4', family='Arial Black')),
-        hovermode='x unified',
-        plot_bgcolor='#0f172a',
-        paper_bgcolor='#1e293b',
+        hovermode='x unified', plot_bgcolor='#0f172a', paper_bgcolor='#1e293b',
         font=dict(color='#e2e8f0', size=12),
-        xaxis=dict(showgrid=True, gridcolor='#334155', linecolor='#475569'),
+        xaxis=dict(showgrid=True, gridcolor='#334155'),
         height=500,
         legend=dict(bgcolor='#1e293b', bordercolor='#334155', borderwidth=1)
     )
@@ -277,28 +238,18 @@ def create_dual_axis_chart(df, col1, col2, title, y1_title, y2_title):
     return fig
 
 def create_empty_chart(title):
-    """Crear un gráfico vacío con mensaje"""
+    """Crear gráfico vacío"""
     fig = go.Figure()
-    
     fig.add_annotation(
-        text="No hay datos disponibles",
-        xref="paper",
-        yref="paper",
-        x=0.5,
-        y=0.5,
-        showarrow=False,
+        text="No hay datos disponibles", xref="paper", yref="paper",
+        x=0.5, y=0.5, showarrow=False,
         font=dict(size=20, color='#94a3b8')
     )
-    
     fig.update_layout(
         title=dict(text=title, font=dict(size=20, color='#06b6d4', family='Arial Black')),
-        plot_bgcolor='#0f172a',
-        paper_bgcolor='#1e293b',
-        height=500,
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False)
+        plot_bgcolor='#0f172a', paper_bgcolor='#1e293b',
+        height=500, xaxis=dict(visible=False), yaxis=dict(visible=False)
     )
-    
     return fig
 
 def main():
@@ -326,20 +277,22 @@ def main():
         st.markdown("• Federal Reserve Economic Data (FRED)")
         st.markdown("• Departamento del Tesoro de EE.UU.")
         st.markdown("• Oficina de Estadísticas Laborales")
-        st.markdown("• Índices S&P Dow Jones")
+        st.markdown("• S&P Dow Jones Indices")
         
         st.markdown("---")
         st.markdown("### 🔄 Última Actualización")
         st.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M')}")
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "💰 Política Monetaria",
-        "📈 Métricas de Inflación", 
+        "📈 Inflación", 
         "👥 Mercado Laboral",
         "🏠 Sector Inmobiliario",
-        "📊 Curvas de Rendimiento"
+        "📊 Curvas de Rendimiento",
+        "💼 Economía & Consumo"
     ])
     
+    # TAB 1: POLÍTICA MONETARIA
     with tab1:
         st.markdown("## 💰 Panel de Política Monetaria")
         
@@ -347,325 +300,321 @@ def main():
             'FEDFUNDS': 'FEDFUNDS',
             'DGS2': 'DGS2',
             'DGS10': 'DGS10',
-            'DGS30': 'DGS30'
+            'DGS30': 'DGS30',
+            'T10Y2Y': 'T10Y2Y',
+            'T10Y3M': 'T10Y3M',
+            'T5YIE': 'T5YIE',
+            'T5YIFR': 'T5YIFR'
         }
         
-        with st.spinner('Cargando datos de política monetaria...'):
-            monetary_data = fetch_multiple_series(monetary_series, start_date, end_date)
+        with st.spinner('Cargando datos...'):
+            data = fetch_multiple_series(monetary_series, start_date, end_date)
         
-        if monetary_data is not None and not monetary_data.empty:
+        if data is not None and not data.empty:
+            latest = data.iloc[-1]
+            prev = data.iloc[-30] if len(data) > 30 else data.iloc[0]
+            
             col1, col2, col3, col4 = st.columns(4)
             
-            latest = monetary_data.iloc[-1]
-            prev = monetary_data.iloc[-30] if len(monetary_data) > 30 else monetary_data.iloc[0]
-            
             with col1:
-                val = latest.get('FEDFUNDS', None)
-                prev_val = prev.get('FEDFUNDS', None)
+                val = latest.get('FEDFUNDS')
+                prev_val = prev.get('FEDFUNDS')
                 change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Tasa Fed Funds", 
-                         safe_metric_value(val, "{:.2f}%"),
-                         f"{change:+.2f}%" if change != 0 else "")
+                st.metric("Fed Funds", safe_value(val, "{:.2f}%"), f"{change:+.2f}%" if change != 0 else "")
             
             with col2:
-                val = latest.get('DGS2', None)
-                prev_val = prev.get('DGS2', None)
+                val = latest.get('DGS10')
+                prev_val = prev.get('DGS10')
                 change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Tesoro 2 Años", 
-                         safe_metric_value(val, "{:.2f}%"),
-                         f"{change:+.2f}%" if change != 0 else "")
+                st.metric("Tesoro 10A", safe_value(val, "{:.2f}%"), f"{change:+.2f}%" if change != 0 else "")
             
             with col3:
-                val = latest.get('DGS10', None)
-                prev_val = prev.get('DGS10', None)
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Tesoro 10 Años", 
-                         safe_metric_value(val, "{:.2f}%"),
-                         f"{change:+.2f}%" if change != 0 else "")
+                val = latest.get('T10Y2Y')
+                st.metric("Spread 10A-2A", safe_value(val, "{:.2f}%"), 
+                         "Invertida" if (val and val < 0) else "Normal")
             
             with col4:
-                dgs10 = latest.get('DGS10', None)
-                dgs2 = latest.get('DGS2', None)
-                if dgs10 and dgs2 and not pd.isna(dgs10) and not pd.isna(dgs2):
-                    spread = dgs10 - dgs2
-                    st.metric("Spread 10A-2A", 
-                             f"{spread:.2f}%",
-                             "Invertida" if spread < 0 else "Normal",
-                             delta_color="inverse")
-                else:
-                    st.metric("Spread 10A-2A", "N/A")
+                val = latest.get('T5YIE')
+                st.metric("Inflación Esperada 5A", safe_value(val, "{:.2f}%"))
             
             st.markdown("---")
             
             col1, col2 = st.columns(2)
             
             with col1:
-                plot_data = monetary_data[['FEDFUNDS', 'DGS2', 'DGS10']].dropna(how='all')
-                fig1 = create_line_chart(
-                    plot_data,
-                    "📊 Tasas de Interés a lo Largo del Tiempo",
-                    "Tasa (%)"
+                fig = create_line_chart(
+                    data[['FEDFUNDS', 'DGS2', 'DGS10', 'DGS30']].dropna(how='all'),
+                    "📊 Tasas de Interés", "Tasa (%)"
                 )
-                st.plotly_chart(fig1, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                if 'DGS10' in monetary_data.columns and 'DGS2' in monetary_data.columns:
-                    spread_df = pd.DataFrame({
-                        'Spread 10A-2A': monetary_data['DGS10'] - monetary_data['DGS2']
-                    }).dropna()
-                    fig2 = create_area_chart(
-                        spread_df,
-                        "📉 Spread de Curva de Rendimiento (10A-2A)",
-                        "Spread (%)"
-                    )
-                    st.plotly_chart(fig2, use_container_width=True)
-        else:
-            st.error("No se pudieron cargar los datos de política monetaria")
+                spread_data = pd.DataFrame({
+                    'T10Y2Y': data.get('T10Y2Y', pd.Series()),
+                    'T10Y3M': data.get('T10Y3M', pd.Series())
+                }).dropna(how='all')
+                fig = create_line_chart(spread_data, "📉 Spreads de Rendimiento", "Spread (%)")
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Expectativas de inflación
+            st.markdown("### Expectativas de Inflación")
+            inflation_exp = data[['T5YIE', 'T5YIFR']].dropna(how='all')
+            fig = create_line_chart(inflation_exp, "🔮 Expectativas de Inflación", "Tasa (%)")
+            st.plotly_chart(fig, use_container_width=True)
     
+    # TAB 2: INFLACIÓN
     with tab2:
-        st.markdown("## 📈 Panel de Métricas de Inflación")
+        st.markdown("## 📈 Panel de Inflación")
         
         inflation_series = {
             'CPIAUCSL': 'CPIAUCSL',
             'CPILFESL': 'CPILFESL',
+            'CORESTICKM159SFRBATL': 'CORESTICKM159SFRBATL',
             'PCEPI': 'PCEPI',
-            'PCEPILFE': 'PCEPILFE'
+            'PCEPILFE': 'PCEPILFE',
+            'PCETRIM12M159SFRBDAL': 'PCETRIM12M159SFRBDAL'
         }
         
         with st.spinner('Cargando datos de inflación...'):
-            inflation_data = fetch_multiple_series(inflation_series, start_date, end_date)
+            data = fetch_multiple_series(inflation_series, start_date, end_date)
         
-        if inflation_data is not None and not inflation_data.empty:
-            inflation_yoy = inflation_data.pct_change(12) * 100
+        if data is not None and not data.empty:
+            yoy = data.pct_change(12) * 100
             
             col1, col2, col3, col4 = st.columns(4)
             
-            latest_yoy = inflation_yoy.iloc[-1]
-            prev_yoy = inflation_yoy.iloc[-13] if len(inflation_yoy) > 13 else inflation_yoy.iloc[0]
+            latest_yoy = yoy.iloc[-1]
             
             with col1:
-                val = latest_yoy.get('CPIAUCSL', None)
-                prev_val = prev_yoy.get('CPIAUCSL', None)
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("IPC Interanual", 
-                         safe_metric_value(val, "{:.2f}%"),
-                         f"{change:+.2f}%" if change != 0 else "")
+                val = latest_yoy.get('CPIAUCSL')
+                st.metric("IPC YoY", safe_value(val, "{:.2f}%"))
             
             with col2:
-                val = latest_yoy.get('CPILFESL', None)
-                prev_val = prev_yoy.get('CPILFESL', None)
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("IPC Subyacente Interanual", 
-                         safe_metric_value(val, "{:.2f}%"),
-                         f"{change:+.2f}%" if change != 0 else "")
+                val = latest_yoy.get('CPILFESL')
+                st.metric("IPC Subyacente YoY", safe_value(val, "{:.2f}%"))
             
             with col3:
-                val = latest_yoy.get('PCEPI', None)
-                prev_val = prev_yoy.get('PCEPI', None)
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("PCE Interanual", 
-                         safe_metric_value(val, "{:.2f}%"),
-                         f"{change:+.2f}%" if change != 0 else "")
+                val = latest_yoy.get('PCEPI')
+                st.metric("PCE YoY", safe_value(val, "{:.2f}%"))
             
             with col4:
-                val = latest_yoy.get('PCEPILFE', None)
-                prev_val = prev_yoy.get('PCEPILFE', None)
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("PCE Subyacente Interanual", 
-                         safe_metric_value(val, "{:.2f}%"),
-                         f"{change:+.2f}%" if change != 0 else "")
+                val = latest_yoy.get('PCEPILFE')
+                st.metric("PCE Subyacente YoY", safe_value(val, "{:.2f}%"))
             
             st.markdown("---")
             
             col1, col2 = st.columns(2)
             
             with col1:
-                fig1 = create_line_chart(
-                    inflation_data.dropna(how='all'),
-                    "📊 Índices de Inflación (Nivel)",
-                    "Nivel del Índice"
+                fig = create_line_chart(
+                    yoy[['CPIAUCSL', 'CPILFESL', 'CORESTICKM159SFRBATL']].dropna(how='all'),
+                    "📊 Inflación IPC (YoY)", "Cambio YoY (%)",
+                    colors=['#f59e0b', '#ef4444', '#ec4899']
                 )
-                st.plotly_chart(fig1, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                fig2 = create_line_chart(
-                    inflation_yoy.dropna(how='all'),
-                    "📈 Tasa de Inflación (% Cambio Interanual)",
-                    "Cambio Interanual (%)",
-                    colors=['#f59e0b', '#ef4444', '#ec4899', '#8b5cf6']
+                fig = create_line_chart(
+                    yoy[['PCEPI', 'PCEPILFE', 'PCETRIM12M159SFRBDAL']].dropna(how='all'),
+                    "📈 Inflación PCE (YoY)", "Cambio YoY (%)",
+                    colors=['#8b5cf6', '#a78bfa', '#c4b5fd']
                 )
-                st.plotly_chart(fig2, use_container_width=True)
-        else:
-            st.error("No se pudieron cargar los datos de inflación")
+                st.plotly_chart(fig, use_container_width=True)
     
+    # TAB 3: MERCADO LABORAL
     with tab3:
         st.markdown("## 👥 Panel del Mercado Laboral")
         
         labor_series = {
             'UNRATE': 'UNRATE',
             'PAYEMS': 'PAYEMS',
+            'CES0500000003': 'CES0500000003',
             'CIVPART': 'CIVPART',
-            'ICSA': 'ICSA'
+            'ICSA': 'ICSA',
+            'JTSJOL': 'JTSJOL',
+            'JTSQUL': 'JTSQUL',
+            'JTSLDL': 'JTSLDL'
         }
         
-        with st.spinner('Cargando datos del mercado laboral...'):
-            labor_data = fetch_multiple_series(labor_series, start_date, end_date)
+        with st.spinner('Cargando datos laborales...'):
+            data = fetch_multiple_series(labor_series, start_date, end_date)
         
-        if labor_data is not None and not labor_data.empty:
+        if data is not None and not data.empty:
+            latest = data.iloc[-1]
+            prev = data.iloc[-2] if len(data) > 1 else data.iloc[0]
+            
             col1, col2, col3, col4 = st.columns(4)
             
-            latest = labor_data.iloc[-1]
-            prev = labor_data.iloc[-2] if len(labor_data) > 1 else labor_data.iloc[0]
-            
             with col1:
-                val = latest.get('UNRATE', None)
-                prev_val = prev.get('UNRATE', None)
+                val = latest.get('UNRATE')
+                prev_val = prev.get('UNRATE')
                 change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Tasa de Desempleo", 
-                         safe_metric_value(val, "{:.1f}%"),
-                         f"{change:+.1f}%" if change != 0 else "",
-                         delta_color="inverse")
+                st.metric("Desempleo", safe_value(val, "{:.1f}%"), 
+                         f"{change:+.1f}%" if change != 0 else "", delta_color="inverse")
             
             with col2:
-                val = latest.get('PAYEMS', None)
-                prev_val = prev.get('PAYEMS', None)
+                val = latest.get('PAYEMS')
+                prev_val = prev.get('PAYEMS')
                 change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Nóminas No Agrícolas", 
-                         safe_metric_value(val, "{:.0f}K"),
-                         f"{change:+.0f}K" if change != 0 else "")
+                st.metric("Nóminas", safe_value(val, "{:.0f}K"), f"{change:+.0f}K" if change != 0 else "")
             
             with col3:
-                val = latest.get('CIVPART', None)
-                prev_val = prev.get('CIVPART', None)
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Participación Laboral", 
-                         safe_metric_value(val, "{:.1f}%"),
-                         f"{change:+.1f}%" if change != 0 else "")
+                val = latest.get('CES0500000003')
+                st.metric("Salario por Hora", safe_value(val, "${:.2f}"))
             
             with col4:
-                val = latest.get('ICSA', None)
-                prev_val = prev.get('ICSA', None)
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Solicitudes Iniciales", 
-                         safe_metric_value(val, "{:.0f}K"),
-                         f"{change:+.0f}K" if change != 0 else "",
-                         delta_color="inverse")
+                val = latest.get('JTSJOL')
+                st.metric("Vacantes (JOLTS)", safe_value(val, "{:.0f}K"))
             
             st.markdown("---")
             
             col1, col2 = st.columns(2)
             
             with col1:
-                if 'UNRATE' in labor_data.columns:
-                    fig1 = create_area_chart(
-                        labor_data[['UNRATE']].dropna(),
-                        "📉 Tasa de Desempleo",
-                        "Tasa (%)",
-                        color='#8b5cf6'
-                    )
-                    st.plotly_chart(fig1, use_container_width=True)
+                fig = create_area_chart(
+                    data[['UNRATE']].dropna(),
+                    "📉 Tasa de Desempleo", "Tasa (%)", color='#8b5cf6'
+                )
+                st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                if 'PAYEMS' in labor_data.columns:
-                    fig2 = create_line_chart(
-                        labor_data[['PAYEMS']].dropna(),
-                        "📊 Nóminas No Agrícolas",
-                        "Miles",
-                        colors=['#10b981']
-                    )
-                    st.plotly_chart(fig2, use_container_width=True)
-        else:
-            st.error("No se pudieron cargar los datos del mercado laboral")
+                fig = create_line_chart(
+                    data[['PAYEMS', 'JTSJOL']].dropna(how='all'),
+                    "📊 Nóminas y Vacantes", "Miles",
+                    colors=['#10b981', '#06b6d4']
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # JOLTS Data
+            st.markdown("### Datos JOLTS (Job Openings and Labor Turnover Survey)")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = create_line_chart(
+                    data[['JTSQUL']].dropna(),
+                    "🚪 Renuncias JOLTS", "Miles", colors=['#f59e0b']
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                fig = create_line_chart(
+                    data[['JTSLDL']].dropna(),
+                    "📉 Despidos JOLTS", "Miles", colors=['#ef4444']
+                )
+                st.plotly_chart(fig, use_container_width=True)
     
+    # TAB 4: SECTOR INMOBILIARIO
     with tab4:
         st.markdown("## 🏠 Panel del Sector Inmobiliario")
         
-        real_estate_series = {
+        re_series = {
             'CSUSHPISA': 'CSUSHPISA',
+            'USSTHPI': 'USSTHPI',
+            'MSPNHSUS': 'MSPNHSUS',
             'HOUST': 'HOUST',
+            'HOUST1F': 'HOUST1F',
+            'PERMIT': 'PERMIT',
+            'PERMIT1': 'PERMIT1',
+            'HSN1FNSA': 'HSN1FNSA',
+            'EXHOSLUSM495S': 'EXHOSLUSM495S',
             'MORTGAGE30US': 'MORTGAGE30US',
-            'MSPNHSUS': 'MSPNHSUS'
+            'PRRESCON': 'PRRESCON',
+            'USCONS': 'USCONS'
         }
         
-        with st.spinner('Cargando datos del sector inmobiliario...'):
-            re_data = fetch_multiple_series(real_estate_series, start_date, end_date)
+        with st.spinner('Cargando datos inmobiliarios...'):
+            data = fetch_multiple_series(re_series, start_date, end_date)
         
-        if re_data is not None and not re_data.empty:
-            col1, col2, col3 = st.columns(3)
+        if data is not None and not data.empty:
+            latest = data.iloc[-1]
+            prev_year = data.iloc[-12] if len(data) > 12 else data.iloc[0]
             
-            latest = re_data.iloc[-1]
-            prev_year = re_data.iloc[-12] if len(re_data) > 12 else re_data.iloc[0]
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                val = latest.get('CSUSHPISA', None)
-                prev_val = prev_year.get('CSUSHPISA', None)
+                val = latest.get('CSUSHPISA')
+                prev_val = prev_year.get('CSUSHPISA')
                 if val and prev_val and not pd.isna(val) and not pd.isna(prev_val):
-                    yoy_change = ((val / prev_val) - 1) * 100
-                    st.metric("Índice Case-Shiller", 
-                             safe_metric_value(val),
-                             f"{yoy_change:+.2f}% Interanual")
+                    yoy = ((val / prev_val) - 1) * 100
+                    st.metric("Case-Shiller", safe_value(val), f"{yoy:+.2f}% YoY")
                 else:
-                    st.metric("Índice Case-Shiller", "N/A")
+                    st.metric("Case-Shiller", "N/A")
             
             with col2:
-                val = latest.get('MORTGAGE30US', None)
-                prev_val = prev_year.get('MORTGAGE30US', None)
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Hipoteca 30 Años", 
-                         safe_metric_value(val, "{:.2f}%"),
-                         f"{change:+.2f}%" if change != 0 else "")
+                val = latest.get('MORTGAGE30US')
+                st.metric("Hipoteca 30A", safe_value(val, "{:.2f}%"))
             
             with col3:
-                val = latest.get('HOUST', None)
-                prev_val = prev_year.get('HOUST', None)
-                change = val - prev_val if (val and prev_val and not pd.isna(val) and not pd.isna(prev_val)) else 0
-                st.metric("Inicios de Construcción", 
-                         safe_metric_value(val, "{:.0f}K"),
-                         f"{change:+.0f}K" if change != 0 else "")
+                val = latest.get('HOUST')
+                st.metric("Inicios Construcción", safe_value(val, "{:.0f}K"))
+            
+            with col4:
+                val = latest.get('HSN1FNSA')
+                st.metric("Ventas Nuevas", safe_value(val, "{:.0f}K"))
             
             st.markdown("---")
             
             col1, col2 = st.columns(2)
             
             with col1:
-                if 'CSUSHPISA' in re_data.columns:
-                    fig1 = create_line_chart(
-                        re_data[['CSUSHPISA']].dropna(),
-                        "🏘️ Índice de Precios Case-Shiller",
-                        "Índice (Ene 2000 = 100)",
-                        colors=['#10b981']
-                    )
-                    st.plotly_chart(fig1, use_container_width=True)
+                fig = create_line_chart(
+                    data[['CSUSHPISA', 'USSTHPI']].dropna(how='all'),
+                    "🏘️ Índices de Precios de Vivienda", "Índice",
+                    colors=['#10b981', '#06b6d4']
+                )
+                st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                if 'HOUST' in re_data.columns and 'MORTGAGE30US' in re_data.columns:
-                    fig2 = create_dual_axis_chart(
-                        re_data,
-                        'HOUST',
-                        'MORTGAGE30US',
-                        "🏗️ Construcción vs Tasas Hipotecarias",
-                        "Inicios de Construcción (K)",
-                        "Tasa Hipotecaria (%)"
+                if 'HOUST' in data.columns and 'MORTGAGE30US' in data.columns:
+                    fig = create_dual_axis_chart(
+                        data, 'HOUST', 'MORTGAGE30US',
+                        "🏗️ Construcción vs Hipotecas",
+                        "Inicios (K)", "Tasa (%)"
                     )
-                    st.plotly_chart(fig2, use_container_width=True)
-        else:
-            st.error("No se pudieron cargar los datos del sector inmobiliario")
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            # Actividad de construcción
+            st.markdown("### Actividad de Construcción y Permisos")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = create_line_chart(
+                    data[['HOUST', 'HOUST1F', 'PERMIT', 'PERMIT1']].dropna(how='all'),
+                    "🏗️ Inicios y Permisos de Construcción", "Miles",
+                    colors=['#06b6d4', '#8b5cf6', '#ec4899', '#f59e0b']
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                fig = create_line_chart(
+                    data[['HSN1FNSA', 'EXHOSLUSM495S']].dropna(how='all'),
+                    "🏡 Ventas de Viviendas", "Miles",
+                    colors=['#10b981', '#3b82f6']
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Construcción y empleo
+            st.markdown("### Gasto en Construcción y Empleo")
+            
+            if 'PRRESCON' in data.columns and 'USCONS' in data.columns:
+                fig = create_dual_axis_chart(
+                    data, 'PRRESCON', 'USCONS',
+                    "💼 Gasto en Construcción vs Empleo",
+                    "Gasto (Millones $)", "Empleados (K)"
+                )
+                st.plotly_chart(fig, use_container_width=True)
     
+    # TAB 5: CURVAS DE RENDIMIENTO
     with tab5:
         st.markdown("## 📊 Curvas de Rendimiento del Tesoro")
         
         yield_series = {
-            'DGS1MO': 'DGS1MO',
-            'DGS3MO': 'DGS3MO',
-            'DGS6MO': 'DGS6MO',
-            'DGS1': 'DGS1',
-            'DGS2': 'DGS2',
-            'DGS3': 'DGS3',
-            'DGS5': 'DGS5',
-            'DGS7': 'DGS7',
-            'DGS10': 'DGS10',
-            'DGS20': 'DGS20',
-            'DGS30': 'DGS30'
+            'DGS1MO': 'DGS1MO', 'DGS3MO': 'DGS3MO', 'DGS6MO': 'DGS6MO',
+            'DGS1': 'DGS1', 'DGS2': 'DGS2', 'DGS3': 'DGS3',
+            'DGS5': 'DGS5', 'DGS7': 'DGS7', 'DGS10': 'DGS10',
+            'DGS20': 'DGS20', 'DGS30': 'DGS30'
         }
         
         maturity_labels = {
@@ -675,13 +624,13 @@ def main():
             'DGS20': '20A', 'DGS30': '30A'
         }
         
-        with st.spinner('Cargando datos de curva de rendimiento...'):
-            yield_data = fetch_multiple_series(yield_series, start_date, end_date)
+        with st.spinner('Cargando curva de rendimiento...'):
+            data = fetch_multiple_series(yield_series, start_date, end_date)
         
-        if yield_data is not None and not yield_data.empty:
+        if data is not None and not data.empty:
             st.markdown("### Curva de Rendimiento Actual")
             
-            latest_yields = yield_data.iloc[-1].dropna()
+            latest_yields = data.iloc[-1].dropna()
             
             if not latest_yields.empty:
                 maturities = [maturity_labels.get(col, col) for col in latest_yields.index]
@@ -689,21 +638,18 @@ def main():
                 
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
-                    x=maturities,
-                    y=yields,
+                    x=maturities, y=yields,
                     mode='lines+markers',
                     line=dict(color='#06b6d4', width=4),
                     marker=dict(size=10, color='#06b6d4'),
-                    hovertemplate='<b>%{x}</b><br>Rendimiento: %{y:.2f}%<extra></extra>'
+                    hovertemplate='<b>%{x}</b><br>%{y:.2f}%<extra></extra>'
                 ))
                 
                 fig.update_layout(
-                    title=dict(text="📈 Curva de Rendimiento del Tesoro (Actual)", 
+                    title=dict(text="📈 Curva de Rendimiento (Actual)", 
                               font=dict(size=24, color='#06b6d4', family='Arial Black')),
-                    xaxis_title="Vencimiento",
-                    yaxis_title="Rendimiento (%)",
-                    plot_bgcolor='#0f172a',
-                    paper_bgcolor='#1e293b',
+                    xaxis_title="Vencimiento", yaxis_title="Rendimiento (%)",
+                    plot_bgcolor='#0f172a', paper_bgcolor='#1e293b',
                     font=dict(color='#e2e8f0', size=14),
                     xaxis=dict(showgrid=True, gridcolor='#334155'),
                     yaxis=dict(showgrid=True, gridcolor='#334155'),
@@ -712,28 +658,111 @@ def main():
                 
                 st.plotly_chart(fig, use_container_width=True)
             
-            st.markdown("### Spreads de Rendimiento Históricos")
+            st.markdown("### Evolución de Rendimientos")
             
-            spreads_data = {}
-            if 'DGS10' in yield_data.columns and 'DGS2' in yield_data.columns:
-                spreads_data['10A-2A'] = yield_data['DGS10'] - yield_data['DGS2']
-            if 'DGS10' in yield_data.columns and 'DGS3MO' in yield_data.columns:
-                spreads_data['10A-3M'] = yield_data['DGS10'] - yield_data['DGS3MO']
-            if 'DGS30' in yield_data.columns and 'DGS5' in yield_data.columns:
-                spreads_data['30A-5A'] = yield_data['DGS30'] - yield_data['DGS5']
+            col1, col2 = st.columns(2)
             
-            if spreads_data:
-                spreads_df = pd.DataFrame(spreads_data).dropna(how='all')
-                fig2 = create_line_chart(
-                    spreads_df,
-                    "📊 Spreads de Rendimiento del Tesoro",
-                    "Spread (%)",
+            with col1:
+                fig = create_line_chart(
+                    data[['DGS2', 'DGS10', 'DGS30']].dropna(how='all'),
+                    "📊 Rendimientos Principales", "Rendimiento (%)"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                spreads = pd.DataFrame({
+                    '10A-2A': data.get('DGS10', pd.Series()) - data.get('DGS2', pd.Series()),
+                    '10A-3M': data.get('DGS10', pd.Series()) - data.get('DGS3MO', pd.Series())
+                }).dropna(how='all')
+                fig = create_line_chart(spreads, "📉 Spreads de Rendimiento", "Spread (%)")
+                st.plotly_chart(fig, use_container_width=True)
+    
+    # TAB 6: ECONOMÍA & CONSUMO
+    with tab6:
+        st.markdown("## 💼 Panel de Economía y Consumo")
+        
+        econ_series = {
+            'PCE': 'PCE',
+            'PCES': 'PCES',
+            'DGDSRC1': 'DGDSRC1',
+            'RSXFS': 'RSXFS',
+            'RSAFS': 'RSAFS',
+            'DGORDER': 'DGORDER',
+            'UMCSENT': 'UMCSENT',
+            'MICH': 'MICH',
+            'RPI': 'RPI'
+        }
+        
+        with st.spinner('Cargando datos económicos...'):
+            data = fetch_multiple_series(econ_series, start_date, end_date)
+        
+        if data is not None and not data.empty:
+            latest = data.iloc[-1]
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                val = latest.get('PCE')
+                st.metric("Gasto Personal", safe_value(val, "{:.0f}B"))
+            
+            with col2:
+                val = latest.get('UMCSENT')
+                st.metric("Confianza Consumidor", safe_value(val, "{:.1f}"))
+            
+            with col3:
+                val = latest.get('DGORDER')
+                st.metric("Pedidos Bienes Duraderos", safe_value(val, "{:.0f}M"))
+            
+            with col4:
+                val = latest.get('RPI')
+                st.metric("Ingreso Personal Real", safe_value(val, "{:.0f}B"))
+            
+            st.markdown("---")
+            
+            # Consumo
+            st.markdown("### Consumo Personal")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = create_line_chart(
+                    data[['PCE', 'PCES', 'DGDSRC1']].dropna(how='all'),
+                    "💰 Gasto de Consumo Personal", "Miles de Millones $",
                     colors=['#06b6d4', '#8b5cf6', '#ec4899']
                 )
-                st.plotly_chart(fig2, use_container_width=True)
-        else:
-            st.error("No se pudieron cargar los datos de curva de rendimiento")
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                fig = create_line_chart(
+                    data[['RSXFS', 'RSAFS']].dropna(how='all'),
+                    "🛒 Ventas Minoristas", "Millones $",
+                    colors=['#10b981', '#3b82f6']
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Confianza y expectativas
+            st.markdown("### Confianza del Consumidor")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = create_line_chart(
+                    data[['UMCSENT', 'MICH']].dropna(how='all'),
+                    "😊 Índice de Confianza del Consumidor", "Índice",
+                    colors=['#f59e0b', '#ef4444']
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                if 'DGORDER' in data.columns:
+                    fig = create_area_chart(
+                        data[['DGORDER']].dropna(),
+                        "📦 Pedidos de Bienes Duraderos", "Millones $",
+                        color='#8b5cf6'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
     
+    # Footer
     st.markdown("""
     <div class="collaboration-footer">
         <p class="collab-text">Desarrollado en colaboración con</p>
