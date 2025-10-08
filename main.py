@@ -268,13 +268,13 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg, smooth_window=1)
                 name=labels[indicator],
                 marker=dict(
                     color=color,
-                    line=dict(width=0)  # No borders for smooth look
+                    line=dict(width=0)
                 ),
-                width=None,  # Auto width for continuous appearance
                 hovertemplate='<b>%{fullData.name}</b><br>' +
                              'Fecha: %{x}<br>' +
                              'Valor: %{y:.3f}%<br>' +
-                             '<extra></extra>'
+                             '<extra></extra>',
+                offsetgroup=0  # Makes bars fill the space completely
             ))
     
     if 'curve_smooth' in df.columns:
@@ -322,7 +322,9 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg, smooth_window=1)
             gridcolor='rgba(80, 80, 80, 0.3)',
             gridwidth=1,
             showline=False,
-            zeroline=False
+            zeroline=False,
+            type='date',
+            rangeslider=dict(visible=False)
         ),
         yaxis=dict(
             showgrid=True, 
@@ -334,6 +336,8 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg, smooth_window=1)
             zerolinewidth=1
         ),
         barmode='stack',
+        bargap=0,  # No gap between bars
+        bargroupgap=0,  # No gap between bar groups
         legend=dict(
             bgcolor='rgba(0, 0, 0, 0.8)',
             bordercolor='rgba(80, 80, 80, 0.5)',
