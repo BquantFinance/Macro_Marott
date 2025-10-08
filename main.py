@@ -642,11 +642,32 @@ def main():
     with st.sidebar:
         st.markdown("### ⚙️ Configuración")
         
+        # Add preset date ranges
+        preset_range = st.selectbox(
+            "📅 Rango Preseleccionado",
+            options=["Personalizado", "Long term (50 años)", "30 años", "20 años", "10 años", "5 años", "1 año"],
+            index=0
+        )
+        
         end_date = datetime.now()
-        start_date = end_date - timedelta(days=5*365)
+        
+        if preset_range == "Long term (50 años)":
+            start_date = end_date - timedelta(days=50*365)
+        elif preset_range == "30 años":
+            start_date = end_date - timedelta(days=30*365)
+        elif preset_range == "20 años":
+            start_date = end_date - timedelta(days=20*365)
+        elif preset_range == "10 años":
+            start_date = end_date - timedelta(days=10*365)
+        elif preset_range == "5 años":
+            start_date = end_date - timedelta(days=5*365)
+        elif preset_range == "1 año":
+            start_date = end_date - timedelta(days=365)
+        else:
+            start_date = end_date - timedelta(days=5*365)
         
         date_range = st.date_input(
-            "Seleccionar Rango de Fechas",
+            "O seleccionar fechas manualmente",
             value=(start_date, end_date),
             max_value=end_date
         )
@@ -1185,43 +1206,60 @@ def main():
                     with col1:
                         fig = go.Figure()
                         
-                        butterfly_pos = butterfly_smoothed.copy()
-                        butterfly_neg = butterfly_smoothed.copy()
-                        butterfly_pos[butterfly_pos < 0] = 0
-                        butterfly_neg[butterfly_neg > 0] = 0
+                        # Create smooth color transitions by splitting into many small segments
+                        # This creates a gradient effect similar to the Excel chart
+                        for i in range(len(butterfly_smoothed) - 1):
+                            val = butterfly_smoothed.iloc[i]
+                            next_val = butterfly_smoothed.iloc[i + 1]
+                            
+                            # Determine color based on value
+                            if val > 0:
+                                # Convexa - Red gradient based on intensity
+                                intensity = min(abs(val) / 50, 1.0)  # Normalize to 0-1
+                                color = f'rgba(239, 68, 68, {0.3 + intensity * 0.5})'
+                            else:
+                                # Cóncava - Green gradient based on intensity
+                                intensity = min(abs(val) / 50, 1.0)
+                                color = f'rgba(16, 185, 129, {0.3 + intensity * 0.5})'
+                            
+                            # Create a small segment
+                            fig.add_trace(go.Scatter(
+                                x=[butterfly_smoothed.index[i], butterfly_smoothed.index[i + 1]],
+                                y=[val, next_val],
+                                mode='lines',
+                                line=dict(width=0),
+                                fill='tozeroy',
+                                fillcolor=color,
+                                showlegend=False,
+                                hoverinfo='skip'
+                            ))
                         
+                        # Add main line on top
                         fig.add_trace(go.Scatter(
-                            x=butterfly_df.index,
-                            y=butterfly_pos,
-                            mode='lines',
-                            line=dict(color='#ef4444', width=0),
-                            fill='tozeroy',
-                            fillcolor='rgba(239, 68, 68, 0.35)',
-                            name='🔴 Convexa',
-                            showlegend=True,
-                            hovertemplate='%{y:.2f} bps<extra></extra>'
-                        ))
-                        
-                        fig.add_trace(go.Scatter(
-                            x=butterfly_df.index,
-                            y=butterfly_neg,
-                            mode='lines',
-                            line=dict(color='#10b981', width=0),
-                            fill='tozeroy',
-                            fillcolor='rgba(16, 185, 129, 0.35)',
-                            name='🟢 Cóncava',
-                            showlegend=True,
-                            hovertemplate='%{y:.2f} bps<extra></extra>'
-                        ))
-                        
-                        fig.add_trace(go.Scatter(
-                            x=butterfly_df.index,
+                            x=butterfly_smoothed.index,
                             y=butterfly_smoothed,
                             mode='lines',
                             line=dict(color='#a78bfa', width=3, shape='spline'),
                             name='🦋 Butterfly',
-                            showlegend=False,
+                            showlegend=True,
                             hovertemplate='<b>Butterfly</b><br>%{y:.2f} bps<br>%{x}<extra></extra>'
+                        ))
+                        
+                        # Add legend entries manually
+                        fig.add_trace(go.Scatter(
+                            x=[None], y=[None],
+                            mode='markers',
+                            marker=dict(size=10, color='rgba(239, 68, 68, 0.6)'),
+                            name='🔴 Convexa',
+                            showlegend=True
+                        ))
+                        
+                        fig.add_trace(go.Scatter(
+                            x=[None], y=[None],
+                            mode='markers',
+                            marker=dict(size=10, color='rgba(16, 185, 129, 0.6)'),
+                            name='🟢 Cóncava',
+                            showlegend=True
                         ))
                         
                         fig.add_hline(
