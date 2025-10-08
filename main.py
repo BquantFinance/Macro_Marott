@@ -229,18 +229,18 @@ def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=0.0)
     
     return df
 
-def create_curve_behavior_chart(df, title, front_leg, back_leg, smooth_window=10):
+def create_curve_behavior_chart(df, title, front_leg, back_leg, smooth_window=1):
     """Crear gráfico de comportamiento de curva estilo Bloomberg - Versión Hermosa"""
     fig = go.Figure()
     
-    # Colors matching the reference image more closely
+    # Colors matching the reference image - MORE SATURATED
     colors = {
-        'bullsteepener': 'rgba(34, 197, 94, 0.85)',       # Bright green
-        'bearsteepener': 'rgba(220, 38, 38, 0.85)',       # Bright red
-        'steepenertwist': 'rgba(249, 115, 22, 0.85)',     # Orange
-        'bullflattener': 'rgba(96, 165, 250, 0.85)',      # Light blue
-        'bearflattener': 'rgba(236, 72, 153, 0.85)',      # Pink/Magenta
-        'flattenertwist': 'rgba(234, 179, 8, 0.85)'       # Yellow
+        'bullsteepener': 'rgba(34, 197, 94, 0.95)',       # Bright green - MORE OPAQUE
+        'bearsteepener': 'rgba(220, 38, 38, 0.95)',       # Bright red - MORE OPAQUE
+        'steepenertwist': 'rgba(249, 115, 22, 0.95)',     # Orange - MORE OPAQUE
+        'bullflattener': 'rgba(96, 165, 250, 0.95)',      # Light blue - MORE OPAQUE
+        'bearflattener': 'rgba(236, 72, 153, 0.95)',      # Pink/Magenta - MORE OPAQUE
+        'flattenertwist': 'rgba(234, 179, 8, 0.95)'       # Yellow - MORE OPAQUE
     }
     
     # Beautiful labels with emojis
@@ -256,8 +256,11 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg, smooth_window=10
     # Apply user-controlled smoothing to all indicators
     for indicator, color in colors.items():
         if indicator in df.columns:
-            # Smooth the data for beautiful transitions
-            smoothed = df[indicator].rolling(window=smooth_window, center=True, min_periods=1).mean()
+            # Only smooth if smooth_window > 1
+            if smooth_window > 1:
+                smoothed = df[indicator].rolling(window=smooth_window, center=True, min_periods=1).mean()
+            else:
+                smoothed = df[indicator]
             
             fig.add_trace(go.Bar(
                 x=df.index,
@@ -267,6 +270,7 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg, smooth_window=10
                     color=color,
                     line=dict(width=0)  # No borders for smooth look
                 ),
+                width=None,  # Auto width for continuous appearance
                 hovertemplate='<b>%{fullData.name}</b><br>' +
                              'Fecha: %{x}<br>' +
                              'Valor: %{y:.3f}%<br>' +
@@ -275,8 +279,11 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg, smooth_window=10
     
     if 'curve_smooth' in df.columns:
         # Black line for the actual spread (like in reference image)
-        curve_smooth_window = max(7, smooth_window + 2)
-        extra_smooth = df['curve_smooth'].rolling(window=curve_smooth_window, center=True, min_periods=1).mean()
+        if smooth_window > 1:
+            curve_smooth_window = max(7, smooth_window + 2)
+            extra_smooth = df['curve_smooth'].rolling(window=curve_smooth_window, center=True, min_periods=1).mean()
+        else:
+            extra_smooth = df['curve_smooth']
         
         # Add the 2s10s spread line in black/dark color like the reference
         fig.add_trace(go.Scatter(
@@ -286,7 +293,7 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg, smooth_window=10
             line=dict(
                 color='rgba(30, 30, 30, 0.95)',  # Dark/black line
                 width=2,
-                shape='spline'
+                shape='spline' if smooth_window > 1 else 'linear'
             ),
             mode='lines',
             hovertemplate='<b>2s10s</b><br>' +
@@ -300,8 +307,7 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg, smooth_window=10
     
     fig.update_layout(
         title=dict(
-            text=f"<b>Curve Behaviour ({title})</b><br>" +
-                 f"<sub style='color: #94a3b8;'>Suavizado: {smooth_window} períodos</sub>", 
+            text=f"<b>Curve Behaviour ({title})</b>", 
             font=dict(size=18, color='#e2e8f0'),
             x=0.5,
             xanchor='center'
@@ -1069,11 +1075,27 @@ def main():
             )
         
         with col3:
-            lookback = st.slider(
-                "⏱️ Lookback (días)", 
-                5, 30, 10,
-                help="Período de comparación para detectar cambios"
+            lookback_type = st.selectbox(
+                "⏱️ Tipo Lookback",
+                options=["Días", "Meses"],
+                index=1,
+                help="Selecciona si el lookback es en días o meses"
             )
+            
+            if lookback_type == "Meses":
+                lookback_display = st.slider(
+                    "Lookback (meses)", 
+                    1, 24, 12,
+                    help="Período de comparación en meses (12 meses = ~252 días trading)"
+                )
+                lookback = int(lookback_display * 21)  # ~21 trading days per month
+            else:
+                lookback = st.slider(
+                    "Lookback (días)", 
+                    5, 252, 10,
+                    help="Período de comparación en días"
+                )
+                lookback_display = lookback
         
         with col4:
             threshold = st.slider(
@@ -1085,19 +1107,21 @@ def main():
         with col5:
             smooth_factor = st.slider(
                 "✨ Suavizado", 
-                1, 20, 10, 
-                help="Mayor valor = transiciones más suaves"
+                1, 20, 1, 
+                help="Mayor valor = transiciones más suaves. 1 = sin suavizar (como Excel)"
             )
+        
+        lookback_text = f"{lookback_display} meses (~{lookback} días)" if lookback_type == "Meses" else f"{lookback} días"
         
         st.markdown(f"""
         <div style='background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%); 
                     padding: 15px; border-radius: 12px; border: 1px solid rgba(6, 182, 212, 0.3); 
                     margin: 15px 0; box-shadow: 0 4px 15px rgba(6, 182, 212, 0.1);'>
             <p style='color: #06b6d4; margin: 0; font-size: 0.95rem;'>
-                <b>⚙️ Configuración actual:</b> Comparando cambios en {lookback} días con sensibilidad de {threshold} bps ({threshold/100:.3f}%)
+                <b>⚙️ Configuración actual:</b> Lookback {lookback_text} | Sensibilidad {threshold} bps | Suavizado {smooth_factor}
             </p>
             <p style='color: #94a3b8; margin: 5px 0 0 0; font-size: 0.85rem;'>
-                💡 <i>Sensibilidad 0 bps = modo Excel (captura todos los cambios) | Mayor sensibilidad = solo movimientos significativos</i>
+                💡 <i>Para replicar Excel: Lookback 12 meses + Sensibilidad 0 bps + Suavizado 1</i>
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -1113,14 +1137,18 @@ def main():
         if curve_data is not None and not curve_data.empty:
             curve_data = calculate_curve_metrics(curve_data, front_leg, back_leg, lookback, threshold)
             
-            # Determine title based on date range
-            years_diff = (end_date - start_date).days / 365
-            if years_diff >= 30:
-                title = "Long term"
-            elif years_diff >= 5:
-                title = f"{int(years_diff)}yrs"
+            # Determine title based on lookback period if using months, otherwise use date range
+            if 'lookback_type' in locals() and lookback_type == "Meses":
+                title = f"{lookback_display}mths"
             else:
-                title = f"{int(years_diff*12)}mths"
+                # Determine title based on date range
+                years_diff = (end_date - start_date).days / 365
+                if years_diff >= 30:
+                    title = "Long term"
+                elif years_diff >= 5:
+                    title = f"{int(years_diff)}yrs"
+                else:
+                    title = f"{int(years_diff*12)}mths"
             
             fig = create_curve_behavior_chart(curve_data, title, 
                                               front_leg, back_leg, smooth_window=smooth_factor)
@@ -1174,8 +1202,8 @@ def main():
         
         butterfly_smooth = st.slider(
             "✨ Suavizado Butterfly", 
-            1, 20, 10, 
-            help="Controla el suavizado de la curva butterfly",
+            1, 20, 1, 
+            help="Controla el suavizado de la curva butterfly. 1 = sin suavizar",
             key="butterfly_smooth"
         )
         
@@ -1195,71 +1223,67 @@ def main():
                 butterfly_df = pd.DataFrame({'Butterfly 2-5-10': butterfly}).dropna()
                 
                 if not butterfly_df.empty:
-                    butterfly_smoothed = butterfly_df['Butterfly 2-5-10'].rolling(
-                        window=butterfly_smooth, 
-                        center=True, 
-                        min_periods=1
-                    ).mean()
+                    # Only apply smoothing if butterfly_smooth > 1
+                    if butterfly_smooth > 1:
+                        butterfly_smoothed = butterfly_df['Butterfly 2-5-10'].rolling(
+                            window=butterfly_smooth, 
+                            center=True, 
+                            min_periods=1
+                        ).mean()
+                    else:
+                        butterfly_smoothed = butterfly_df['Butterfly 2-5-10']
                     
                     col1, col2 = st.columns([2, 1])
                     
                     with col1:
                         fig = go.Figure()
                         
-                        # Create smooth color transitions by splitting into many small segments
-                        # This creates a gradient effect similar to the Excel chart
-                        for i in range(len(butterfly_smoothed) - 1):
-                            val = butterfly_smoothed.iloc[i]
-                            next_val = butterfly_smoothed.iloc[i + 1]
-                            
-                            # Determine color based on value
-                            if val > 0:
-                                # Convexa - Red gradient based on intensity
-                                intensity = min(abs(val) / 50, 1.0)  # Normalize to 0-1
-                                color = f'rgba(239, 68, 68, {0.3 + intensity * 0.5})'
-                            else:
-                                # Cóncava - Green gradient based on intensity
-                                intensity = min(abs(val) / 50, 1.0)
-                                color = f'rgba(16, 185, 129, {0.3 + intensity * 0.5})'
-                            
-                            # Create a small segment
-                            fig.add_trace(go.Scatter(
-                                x=[butterfly_smoothed.index[i], butterfly_smoothed.index[i + 1]],
-                                y=[val, next_val],
-                                mode='lines',
-                                line=dict(width=0),
-                                fill='tozeroy',
-                                fillcolor=color,
-                                showlegend=False,
-                                hoverinfo='skip'
-                            ))
+                        # Create smooth data - resample if needed to avoid vertical stripes
+                        # Split into positive and negative for coloring
+                        df_plot = pd.DataFrame({
+                            'value': butterfly_smoothed,
+                            'positive': butterfly_smoothed.clip(lower=0),
+                            'negative': butterfly_smoothed.clip(upper=0)
+                        })
                         
-                        # Add main line on top
+                        # Convexa area (positive values) - Red
                         fig.add_trace(go.Scatter(
-                            x=butterfly_smoothed.index,
-                            y=butterfly_smoothed,
+                            x=df_plot.index,
+                            y=df_plot['positive'],
+                            mode='none',
+                            fill='tozeroy',
+                            fillcolor='rgba(239, 68, 68, 0.6)',
+                            name='🔴 Convexa',
+                            showlegend=True,
+                            hoverinfo='skip',
+                            line=dict(width=0)
+                        ))
+                        
+                        # Cóncava area (negative values) - Green  
+                        fig.add_trace(go.Scatter(
+                            x=df_plot.index,
+                            y=df_plot['negative'],
+                            mode='none',
+                            fill='tozeroy',
+                            fillcolor='rgba(16, 185, 129, 0.6)',
+                            name='🟢 Cóncava',
+                            showlegend=True,
+                            hoverinfo='skip',
+                            line=dict(width=0)
+                        ))
+                        
+                        # Main butterfly line (purple)
+                        fig.add_trace(go.Scatter(
+                            x=df_plot.index,
+                            y=df_plot['value'],
                             mode='lines',
-                            line=dict(color='#a78bfa', width=3, shape='spline'),
+                            line=dict(
+                                color='rgba(167, 139, 250, 0.95)', 
+                                width=2.5
+                            ),
                             name='🦋 Butterfly',
                             showlegend=True,
-                            hovertemplate='<b>Butterfly</b><br>%{y:.2f} bps<br>%{x}<extra></extra>'
-                        ))
-                        
-                        # Add legend entries manually
-                        fig.add_trace(go.Scatter(
-                            x=[None], y=[None],
-                            mode='markers',
-                            marker=dict(size=10, color='rgba(239, 68, 68, 0.6)'),
-                            name='🔴 Convexa',
-                            showlegend=True
-                        ))
-                        
-                        fig.add_trace(go.Scatter(
-                            x=[None], y=[None],
-                            mode='markers',
-                            marker=dict(size=10, color='rgba(16, 185, 129, 0.6)'),
-                            name='🟢 Cóncava',
-                            showlegend=True
+                            hovertemplate='<b>Butterfly</b><br>%{y:.2f} bps<br>%{x|%Y-%m-%d}<extra></extra>'
                         ))
                         
                         fig.add_hline(
@@ -1275,23 +1299,23 @@ def main():
                         fig.update_layout(
                             title=dict(
                                 text=f"<b>Butterfly Spread 2-5-10 Años</b><br>" +
-                                     f"<sub style='color: #38bdf8;'>Suavizado: {butterfly_smooth} períodos</sub>", 
-                                font=dict(size=18, color='#06b6d4'),
+                                     f"<sub style='color: #38bdf8;'>Suavizado: {butterfly_smooth} período{'s' if butterfly_smooth > 1 else ''}</sub>", 
+                                font=dict(size=18, color='#e2e8f0'),
                                 x=0.5,
                                 xanchor='center'
                             ),
-                            xaxis_title="<b>Fecha</b>",
+                            xaxis_title="",
                             yaxis_title="<b>Basis Points</b>",
                             plot_bgcolor='#0a0e1a',
                             paper_bgcolor='#1e293b',
-                            font=dict(color='#e2e8f0', size=11, family='Inter, system-ui, sans-serif'),
+                            font=dict(color='#e2e8f0', size=11, family='Arial, sans-serif'),
                             xaxis=dict(
                                 showgrid=True, 
                                 gridcolor='rgba(51, 65, 85, 0.3)',
                                 rangeslider=dict(visible=False),
                                 showline=True,
                                 linecolor='#334155',
-                                linewidth=2
+                                linewidth=1
                             ),
                             yaxis=dict(
                                 showgrid=True, 
@@ -1301,12 +1325,12 @@ def main():
                                 zerolinewidth=2,
                                 showline=True,
                                 linecolor='#334155',
-                                linewidth=2
+                                linewidth=1
                             ),
                             legend=dict(
                                 bgcolor='rgba(30, 41, 59, 0.95)', 
                                 bordercolor='#475569', 
-                                borderwidth=2,
+                                borderwidth=1,
                                 orientation='h',
                                 yanchor='bottom',
                                 y=1.02,
@@ -1320,7 +1344,7 @@ def main():
                                 font_size=12,
                                 bordercolor='#06b6d4'
                             ),
-                            margin=dict(t=100, b=80, l=80, r=80)
+                            margin=dict(t=100, b=80, l=80, r=40)
                         )
                         
                         st.plotly_chart(fig, use_container_width=True)
