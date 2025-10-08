@@ -164,8 +164,8 @@ def calculate_butterfly(df, short_col, mid_col, long_col):
         return butterfly * 100
     return None
 
-def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=1.0):
-    """Calcular métricas de curva de rendimiento"""
+def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=0.0):
+    """Calcular métricas de curva de rendimiento con threshold configurable"""
     df['curve'] = (df[back_col] - df[front_col]) * 100
     df['curve_smooth'] = df['curve'].rolling(window=2).mean()
     
@@ -173,6 +173,7 @@ def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=1.0)
     df['front_lookback'] = df[front_col].shift(lookback)
     df['back_lookback'] = df[back_col].shift(lookback)
     
+    # Bull Steepener: Spread aumenta + Front baja + Back baja
     df['bullsteepener'] = np.where(
         (df['curve'] > df['curve_lookback'] + threshold) &
         (df[front_col] < df['front_lookback']) &
@@ -180,6 +181,7 @@ def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=1.0)
         df['curve'], 0
     )
     
+    # Bear Steepener: Spread aumenta + Front sube + Back sube
     df['bearsteepener'] = np.where(
         (df['curve'] > df['curve_lookback'] + threshold) &
         (df[front_col] > df['front_lookback']) &
@@ -187,6 +189,7 @@ def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=1.0)
         df['curve'], 0
     )
     
+    # Bull Flattener: Spread disminuye + Front baja + Back baja
     df['bullflattener'] = np.where(
         (df['curve'] < df['curve_lookback'] - threshold) &
         (df[front_col] < df['front_lookback']) &
@@ -194,6 +197,7 @@ def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=1.0)
         df['curve'], 0
     )
     
+    # Bear Flattener: Spread disminuye + Front sube + Back sube
     df['bearflattener'] = np.where(
         (df['curve'] < df['curve_lookback'] - threshold) &
         (df[front_col] > df['front_lookback']) &
@@ -201,15 +205,21 @@ def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=1.0)
         df['curve'], 0
     )
     
+    # Steepener Twist: Spread aumenta + Front baja + Back sube
+    # Exactamente como Excel: Y(spread>lookback; front<lookback; back>lookback)
     df['steepenertwist'] = np.where(
         (df['curve'] > df['curve_lookback'] + threshold) &
-        ((df[front_col] > df['front_lookback']) != (df[back_col] > df['back_lookback'])),
+        (df[front_col] < df['front_lookback']) &
+        (df[back_col] > df['back_lookback']),
         df['curve'], 0
     )
     
+    # Flattener Twist: Spread disminuye + Front sube + Back baja
+    # Exactamente como Excel: Y(spread<lookback; front>lookback; back<lookback)
     df['flattenertwist'] = np.where(
         (df['curve'] < df['curve_lookback'] - threshold) &
-        ((df[front_col] > df['front_lookback']) != (df[back_col] > df['back_lookback'])),
+        (df[front_col] > df['front_lookback']) &
+        (df[back_col] < df['back_lookback']),
         df['curve'], 0
     )
     
@@ -920,7 +930,7 @@ def main():
         else:
             st.error("❌ No se pudieron cargar los datos del sector inmobiliario.")
     
-    # TAB 4: ANÁLISIS DE CURVAS - Updated Version
+    # TAB 4: ANÁLISIS DE CURVAS - Beautiful Version with Threshold Control
     with tab4:
         st.markdown("## 📊 Análisis de Curvas de Rendimiento")
         
@@ -928,6 +938,18 @@ def main():
             info_box("Comportamiento de Curva", 
                     "Análisis avanzado de los movimientos de la curva de rendimientos. "
                     "Bull/Bear Steepener/Flattener indican diferentes escenarios económicos y expectativas del mercado.")
+            
+            st.markdown("""
+            **Lógica de Clasificación (matching Excel):**
+            - 🟢 **Bull Steepener**: Spread ↑ + Corto ↓ + Largo ↓
+            - 🔴 **Bear Steepener**: Spread ↑ + Corto ↑ + Largo ↑
+            - 💗 **Steepener Twist**: Spread ↑ + Corto ↓ + Largo ↑
+            - 🔵 **Bull Flattener**: Spread ↓ + Corto ↓ + Largo ↓
+            - 🟠 **Bear Flattener**: Spread ↓ + Corto ↑ + Largo ↑
+            - 🟣 **Flattener Twist**: Spread ↓ + Corto ↑ + Largo ↓
+            
+            *Nota: Cuando Sensibilidad = 0 bps, funciona exactamente como las fórmulas de Excel.*
+            """)
         
         st.markdown("### 📚 Guía Visual de Movimientos")
         
@@ -950,11 +972,12 @@ def main():
         st.markdown("---")
         st.markdown("### ⚙️ Configurar Análisis de Curva")
         
-        col1, col2, col3, col4 = st.columns(4)
+        # Beautiful configuration panel
+        col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
             front_leg = st.selectbox(
-                "Tenor Corto",
+                "🎯 Tenor Corto",
                 options=['DGS3MO', 'DGS2', 'DGS5'],
                 index=0,
                 format_func=lambda x: {'DGS3MO': '3 Meses', 'DGS2': '2 Años', 'DGS5': '5 Años'}[x]
@@ -962,34 +985,79 @@ def main():
         
         with col2:
             back_leg = st.selectbox(
-                "Tenor Largo",
+                "🎯 Tenor Largo",
                 options=['DGS10', 'DGS30'],
                 index=1,
                 format_func=lambda x: {'DGS10': '10 Años', 'DGS30': '30 Años'}[x]
             )
         
         with col3:
-            lookback = st.slider("Lookback (días)", 5, 30, 10)
+            lookback = st.slider(
+                "⏱️ Lookback (días)", 
+                5, 30, 10,
+                help="Período de comparación para detectar cambios"
+            )
         
         with col4:
-            smooth_factor = st.slider("Suavizado", 1, 20, 10, 
-                                      help="Mayor valor = transiciones más suaves")
+            threshold = st.slider(
+                "🎚️ Sensibilidad (bps)", 
+                0.0, 5.0, 0.5, 0.1,
+                help="Cambio mínimo requerido para clasificar movimiento. 0 = más sensible, 5 = menos sensible"
+            )
+        
+        with col5:
+            smooth_factor = st.slider(
+                "✨ Suavizado", 
+                1, 20, 10, 
+                help="Mayor valor = transiciones más suaves"
+            )
+        
+        # Beautiful info box about current settings
+        st.markdown(f"""
+        <div style='background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%); 
+                    padding: 15px; border-radius: 12px; border: 1px solid rgba(6, 182, 212, 0.3); 
+                    margin: 15px 0; box-shadow: 0 4px 15px rgba(6, 182, 212, 0.1);'>
+            <p style='color: #06b6d4; margin: 0; font-size: 0.95rem;'>
+                <b>⚙️ Configuración actual:</b> Comparando cambios en {lookback} días con sensibilidad de {threshold} bps
+            </p>
+            <p style='color: #94a3b8; margin: 5px 0 0 0; font-size: 0.85rem;'>
+                💡 <i>Menor sensibilidad = solo movimientos significativos | Mayor sensibilidad = captura todos los cambios</i>
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
         
         curve_series = {
             front_leg: front_leg,
             back_leg: back_leg
         }
         
-        with st.spinner('Analizando curva de rendimiento...'):
+        with st.spinner('🔄 Analizando curva de rendimiento...'):
             curve_data = fetch_multiple_series(curve_series, start_date, end_date)
         
         if curve_data is not None and not curve_data.empty:
-            curve_data = calculate_curve_metrics(curve_data, front_leg, back_leg, lookback)
+            curve_data = calculate_curve_metrics(curve_data, front_leg, back_leg, lookback, threshold)
             
             fig = create_curve_behavior_chart(curve_data, "Comportamiento de la Curva", 
                                               front_leg, back_leg, smooth_window=smooth_factor)
             st.plotly_chart(fig, use_container_width=True)
             
+            # Beautiful statistics panel
+            st.markdown("### 📊 Estadísticas del Período")
+            
+            col1, col2, col3, col4, col5, col6 = st.columns(6)
+            
+            indicators = ['bullsteepener', 'bearsteepener', 'steepenertwist', 
+                         'bullflattener', 'bearflattener', 'flattenertwist']
+            labels_short = ['🟢 Bull Steep', '🔴 Bear Steep', '💗 Steep Twist', 
+                           '🔵 Bull Flat', '🟠 Bear Flat', '🟣 Flat Twist']
+            
+            for col, indicator, label in zip([col1, col2, col3, col4, col5, col6], indicators, labels_short):
+                if indicator in curve_data.columns:
+                    count = (curve_data[indicator] != 0).sum()
+                    with col:
+                        st.metric(label, f"{count} días")
+            
+            st.markdown("---")
             st.markdown("### 📈 Análisis Complementario")
             
             col1, col2 = st.columns(2)
@@ -1021,13 +1089,21 @@ def main():
                     "Valores negativos indican una curva cóncava (el medio baja más), "
                     "valores positivos indican una curva convexa (el medio sube más).")
         
+        # Add smoothing control for butterfly
+        butterfly_smooth = st.slider(
+            "✨ Suavizado Butterfly", 
+            1, 20, 10, 
+            help="Controla el suavizado de la curva butterfly",
+            key="butterfly_smooth"
+        )
+        
         butterfly_series = {
             'DGS2': 'DGS2',
             'DGS5': 'DGS5', 
             'DGS10': 'DGS10'
         }
         
-        with st.spinner('Calculando butterfly spread...'):
+        with st.spinner('🦋 Calculando butterfly spread...'):
             butterfly_data = fetch_multiple_series(butterfly_series, start_date, end_date)
         
         if butterfly_data is not None and not butterfly_data.empty:
@@ -1037,66 +1113,121 @@ def main():
                 butterfly_df = pd.DataFrame({'Butterfly 2-5-10': butterfly}).dropna()
                 
                 if not butterfly_df.empty:
+                    # Apply smoothing to butterfly values
+                    butterfly_smoothed = butterfly_df['Butterfly 2-5-10'].rolling(
+                        window=butterfly_smooth, 
+                        center=True, 
+                        min_periods=1
+                    ).mean()
+                    
                     col1, col2 = st.columns([2, 1])
                     
                     with col1:
                         fig = go.Figure()
                         
-                        # Separar valores positivos y negativos para colorear
-                        butterfly_pos = butterfly_df['Butterfly 2-5-10'].copy()
-                        butterfly_neg = butterfly_df['Butterfly 2-5-10'].copy()
+                        # Beautiful gradient areas
+                        butterfly_pos = butterfly_smoothed.copy()
+                        butterfly_neg = butterfly_smoothed.copy()
                         butterfly_pos[butterfly_pos < 0] = 0
                         butterfly_neg[butterfly_neg > 0] = 0
                         
-                        # Área positiva (convexa) en rojo
+                        # Convexa area with beautiful red gradient
                         fig.add_trace(go.Scatter(
                             x=butterfly_df.index,
                             y=butterfly_pos,
                             mode='lines',
                             line=dict(color='#ef4444', width=0),
                             fill='tozeroy',
-                            fillcolor='rgba(239, 68, 68, 0.3)',
-                            name='Convexa',
-                            showlegend=True
+                            fillcolor='rgba(239, 68, 68, 0.35)',
+                            name='🔴 Convexa',
+                            showlegend=True,
+                            hovertemplate='%{y:.2f} bps<extra></extra>'
                         ))
                         
-                        # Área negativa (cóncava) en verde
+                        # Cóncava area with beautiful green gradient
                         fig.add_trace(go.Scatter(
                             x=butterfly_df.index,
                             y=butterfly_neg,
                             mode='lines',
                             line=dict(color='#10b981', width=0),
                             fill='tozeroy',
-                            fillcolor='rgba(16, 185, 129, 0.3)',
-                            name='Cóncava',
-                            showlegend=True
+                            fillcolor='rgba(16, 185, 129, 0.35)',
+                            name='🟢 Cóncava',
+                            showlegend=True,
+                            hovertemplate='%{y:.2f} bps<extra></extra>'
                         ))
                         
-                        # Línea principal
+                        # Beautiful main line with spline smoothing
                         fig.add_trace(go.Scatter(
                             x=butterfly_df.index,
-                            y=butterfly_df['Butterfly 2-5-10'],
+                            y=butterfly_smoothed,
                             mode='lines',
-                            line=dict(color='#8b5cf6', width=2),
-                            name='Butterfly',
-                            showlegend=False
+                            line=dict(color='#a78bfa', width=3, shape='spline'),
+                            name='🦋 Butterfly',
+                            showlegend=False,
+                            hovertemplate='<b>Butterfly</b><br>%{y:.2f} bps<br>%{x}<extra></extra>'
                         ))
                         
-                        fig.add_hline(y=0, line_dash="dash", line_color="#475569", 
-                                     annotation_text="Neutral", annotation_position="right")
+                        # Beautiful zero line
+                        fig.add_hline(
+                            y=0, 
+                            line_dash="dash", 
+                            line_color="rgba(148, 163, 184, 0.6)", 
+                            line_width=2,
+                            annotation_text="⚖️ Neutral", 
+                            annotation_position="right",
+                            annotation_font=dict(color="#94a3b8", size=12)
+                        )
                         
                         fig.update_layout(
-                            title=dict(text="Butterfly Spread 2-5-10 Años", 
-                                      font=dict(size=16, color='#06b6d4')),
-                            xaxis_title="Fecha",
-                            yaxis_title="Basis Points",
-                            plot_bgcolor='#0f172a',
+                            title=dict(
+                                text=f"<b>Butterfly Spread 2-5-10 Años</b><br>" +
+                                     f"<sub style='color: #38bdf8;'>Suavizado: {butterfly_smooth} períodos</sub>", 
+                                font=dict(size=18, color='#06b6d4'),
+                                x=0.5,
+                                xanchor='center'
+                            ),
+                            xaxis_title="<b>Fecha</b>",
+                            yaxis_title="<b>Basis Points</b>",
+                            plot_bgcolor='#0a0e1a',
                             paper_bgcolor='#1e293b',
-                            font=dict(color='#e2e8f0', size=11),
-                            xaxis=dict(showgrid=True, gridcolor='#334155'),
-                            yaxis=dict(showgrid=True, gridcolor='#334155'),
-                            legend=dict(bgcolor='#1e293b', bordercolor='#334155', borderwidth=1),
-                            height=400
+                            font=dict(color='#e2e8f0', size=11, family='Inter, system-ui, sans-serif'),
+                            xaxis=dict(
+                                showgrid=True, 
+                                gridcolor='rgba(51, 65, 85, 0.3)',
+                                rangeslider=dict(visible=False),
+                                showline=True,
+                                linecolor='#334155',
+                                linewidth=2
+                            ),
+                            yaxis=dict(
+                                showgrid=True, 
+                                gridcolor='rgba(51, 65, 85, 0.3)',
+                                zeroline=True,
+                                zerolinecolor='rgba(148, 163, 184, 0.5)',
+                                zerolinewidth=2,
+                                showline=True,
+                                linecolor='#334155',
+                                linewidth=2
+                            ),
+                            legend=dict(
+                                bgcolor='rgba(30, 41, 59, 0.95)', 
+                                bordercolor='#475569', 
+                                borderwidth=2,
+                                orientation='h',
+                                yanchor='bottom',
+                                y=1.02,
+                                xanchor='center',
+                                x=0.5
+                            ),
+                            height=450,
+                            hovermode='x unified',
+                            hoverlabel=dict(
+                                bgcolor='#1e293b',
+                                font_size=12,
+                                bordercolor='#06b6d4'
+                            ),
+                            margin=dict(t=100, b=80, l=80, r=80)
                         )
                         
                         st.plotly_chart(fig, use_container_width=True)
@@ -1104,24 +1235,90 @@ def main():
                     with col2:
                         st.markdown("#### 📊 Interpretación")
                         
-                        current_butterfly = butterfly_df['Butterfly 2-5-10'].iloc[-1]
+                        current_butterfly = butterfly_smoothed.iloc[-1]
                         
+                        # Beautiful color-coded status
                         if current_butterfly < -20:
                             status = "🔵 Muy Cóncava"
+                            status_color = "#3b82f6"
+                            bg_gradient = "linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(6, 182, 212, 0.15))"
                             interpretation = "El 5Y está significativamente más bajo que el promedio de 2Y y 10Y."
+                            signal = "Muy Fuerte"
                         elif current_butterfly < 0:
-                            status = "🔷 Cóncava"
+                            status = "🟢 Cóncava"
+                            status_color = "#10b981"
+                            bg_gradient = "linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(6, 182, 212, 0.15))"
                             interpretation = "El 5Y está por debajo del promedio de 2Y y 10Y."
+                            signal = "Moderada"
                         elif current_butterfly < 20:
-                            status = "🔶 Convexa"
+                            status = "🟠 Convexa"
+                            status_color = "#f59e0b"
+                            bg_gradient = "linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(239, 68, 68, 0.15))"
                             interpretation = "El 5Y está por encima del promedio de 2Y y 10Y."
+                            signal = "Moderada"
                         else:
                             status = "🔴 Muy Convexa"
+                            status_color = "#ef4444"
+                            bg_gradient = "linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.15))"
                             interpretation = "El 5Y está significativamente más alto."
+                            signal = "Muy Fuerte"
                         
-                        st.metric("Butterfly Actual", f"{current_butterfly:.2f} bps")
-                        st.markdown(f"**Estado:** {status}")
-                        st.markdown(f"*{interpretation}*")
+                        # Beautiful metric card
+                        st.markdown(f"""
+                        <div style='background: {bg_gradient}; 
+                                    padding: 20px; border-radius: 12px; 
+                                    border: 2px solid {status_color}; margin: 15px 0;
+                                    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);'>
+                            <p style='color: #94a3b8; font-size: 0.85rem; margin: 0 0 5px 0;'>
+                                Butterfly Actual
+                            </p>
+                            <p style='color: {status_color}; font-weight: 700; font-size: 2rem; margin: 0;'>
+                                {current_butterfly:.2f} bps
+                            </p>
+                            <p style='color: {status_color}; font-weight: 600; font-size: 1.1rem; margin: 15px 0 8px 0;'>
+                                {status}
+                            </p>
+                            <p style='color: #e2e8f0; margin: 0; font-size: 0.9rem; line-height: 1.5;'>
+                                {interpretation}
+                            </p>
+                            <p style='color: #94a3b8; margin: 10px 0 0 0; font-size: 0.85rem;'>
+                                <strong>Señal:</strong> {signal}
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Beautiful statistics
+                        st.markdown("#### 📈 Estadísticas")
+                        
+                        if len(butterfly_smoothed) > 30:
+                            change_30d = butterfly_smoothed.iloc[-1] - butterfly_smoothed.iloc[-30]
+                            delta_color = "normal" if change_30d >= 0 else "inverse"
+                            st.metric("Cambio 30 días", f"{change_30d:.2f} bps", 
+                                     delta=f"{change_30d:.2f}", delta_color=delta_color)
+                        
+                        if len(butterfly_smoothed) > 90:
+                            change_90d = butterfly_smoothed.iloc[-1] - butterfly_smoothed.iloc[-90]
+                            delta_color = "normal" if change_90d >= 0 else "inverse"
+                            st.metric("Cambio 90 días", f"{change_90d:.2f} bps",
+                                     delta=f"{change_90d:.2f}", delta_color=delta_color)
+                        
+                        max_val = butterfly_smoothed.max()
+                        min_val = butterfly_smoothed.min()
+                        
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #1e293b, #0f172a); 
+                                    padding: 15px; border-radius: 10px; 
+                                    border: 1px solid #334155; margin: 10px 0;
+                                    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);'>
+                            <p style='color: #06b6d4; margin: 0 0 5px 0; font-size: 0.9rem; font-weight: 600;'>
+                                Rango del Período
+                            </p>
+                            <p style='color: #e2e8f0; margin: 0; font-size: 0.95rem;'>
+                                <span style='color: #10b981;'>▼ {min_val:.2f}</span> a 
+                                <span style='color: #ef4444;'>▲ {max_val:.2f}</span> bps
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
         
         st.markdown("### 📊 Curvas Históricas Adicionales")
         
@@ -1132,7 +1329,7 @@ def main():
             'FEDFUNDS': 'FEDFUNDS'
         }
         
-        with st.spinner('Cargando spreads adicionales...'):
+        with st.spinner('📊 Cargando spreads adicionales...'):
             other_data = fetch_multiple_series(other_series, start_date, end_date)
         
         if other_data is not None and not other_data.empty:
