@@ -215,8 +215,8 @@ def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=1.0)
     
     return df
 
-def create_curve_behavior_chart(df, title, front_leg, back_leg):
-    """Crear gráfico de comportamiento de curva estilo Bloomberg - Versión Suave"""
+def create_curve_behavior_chart(df, title, front_leg, back_leg, smooth_window=10):
+    """Crear gráfico de comportamiento de curva estilo Bloomberg - Versión Suave con Control de Usuario"""
     fig = go.Figure()
     
     # Use RGBA colors with transparency for better blending
@@ -238,9 +238,7 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg):
         'flattenertwist': 'Flattener Twist'
     }
     
-    # Apply smoothing to all indicators
-    smooth_window = 5
-    
+    # Apply user-controlled smoothing to all indicators
     for indicator, color in colors.items():
         if indicator in df.columns:
             # Smooth the data for smoother transitions
@@ -255,8 +253,9 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg):
             ))
     
     if 'curve_smooth' in df.columns:
-        # Apply extra smoothing to the curve line
-        extra_smooth = df['curve_smooth'].rolling(window=7, center=True, min_periods=1).mean()
+        # Apply extra smoothing to the curve line (proportional to user selection)
+        curve_smooth_window = max(7, smooth_window + 2)
+        extra_smooth = df['curve_smooth'].rolling(window=curve_smooth_window, center=True, min_periods=1).mean()
         fig.add_trace(go.Scatter(
             x=df.index,
             y=extra_smooth,
@@ -269,7 +268,7 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg):
     back_display = back_leg.replace('DGS', '') + 'Y'
     
     fig.update_layout(
-        title=dict(text=f"{title}<br><sub>{front_display}-{back_display} Spread</sub>", 
+        title=dict(text=f"{title}<br><sub>{front_display}-{back_display} Spread | Suavizado: {smooth_window} períodos</sub>", 
                   font=dict(size=18, color='#06b6d4')),
         xaxis_title="Fecha",
         yaxis_title="Basis Points",
@@ -921,239 +920,244 @@ def main():
         else:
             st.error("❌ No se pudieron cargar los datos del sector inmobiliario.")
     
-    # TAB 4: ANÁLISIS DE CURVAS
-    with tab4:
-        st.markdown("## 📊 Análisis de Curvas de Rendimiento")
+    # TAB 4: ANÁLISIS DE CURVAS - Updated Version
+with tab4:
+    st.markdown("## 📊 Análisis de Curvas de Rendimiento")
+    
+    with st.expander("ℹ️ ¿Qué muestra esta sección?"):
+        info_box("Comportamiento de Curva", 
+                "Análisis avanzado de los movimientos de la curva de rendimientos. "
+                "Bull/Bear Steepener/Flattener indican diferentes escenarios económicos y expectativas del mercado.")
+    
+    st.markdown("### 📚 Guía Visual de Movimientos")
+    
+    with st.expander("👁️ Ver Guía Visual (Recomendado para nuevos usuarios)", expanded=False):
+        st.markdown("""
+        **Leyenda:**
+        - **Línea sólida gris:** Curva inicial
+        - **Línea punteada naranja:** Curva final
+        - **🟢 Flechas verdes:** Tasas bajando (Bull)
+        - **🔴 Flechas rojas:** Tasas subiendo (Bear)
         
-        with st.expander("ℹ️ ¿Qué muestra esta sección?"):
-            info_box("Comportamiento de Curva", 
-                    "Análisis avanzado de los movimientos de la curva de rendimientos. "
-                    "Bull/Bear Steepener/Flattener indican diferentes escenarios económicos y expectativas del mercado.")
+        **Interpretación:**
+        - **Flattening:** El spread se reduce (curva se aplana)
+        - **Steepening:** El spread aumenta (curva se empina)
+        """)
         
-        st.markdown("### 📚 Guía Visual de Movimientos")
+        fig_guide = create_curve_explanation_chart()
+        st.plotly_chart(fig_guide, use_container_width=True)
+    
+    st.markdown("---")
+    st.markdown("### ⚙️ Configurar Análisis de Curva")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        front_leg = st.selectbox(
+            "Tenor Corto",
+            options=['DGS3MO', 'DGS2', 'DGS5'],
+            index=0,
+            format_func=lambda x: {'DGS3MO': '3 Meses', 'DGS2': '2 Años', 'DGS5': '5 Años'}[x]
+        )
+    
+    with col2:
+        back_leg = st.selectbox(
+            "Tenor Largo",
+            options=['DGS10', 'DGS30'],
+            index=1,
+            format_func=lambda x: {'DGS10': '10 Años', 'DGS30': '30 Años'}[x]
+        )
+    
+    with col3:
+        lookback = st.slider("Lookback (días)", 5, 30, 10)
+    
+    with col4:
+        smooth_factor = st.slider("Suavizado", 1, 20, 10, 
+                                  help="Mayor valor = transiciones más suaves")
+    
+    curve_series = {
+        front_leg: front_leg,
+        back_leg: back_leg
+    }
+    
+    with st.spinner('Analizando curva de rendimiento...'):
+        curve_data = fetch_multiple_series(curve_series, start_date, end_date)
+    
+    if curve_data is not None and not curve_data.empty:
+        curve_data = calculate_curve_metrics(curve_data, front_leg, back_leg, lookback)
         
-        with st.expander("👁️ Ver Guía Visual (Recomendado para nuevos usuarios)", expanded=False):
-            st.markdown("""
-            **Leyenda:**
-            - **Línea sólida gris:** Curva inicial
-            - **Línea punteada naranja:** Curva final
-            - **🟢 Flechas verdes:** Tasas bajando (Bull)
-            - **🔴 Flechas rojas:** Tasas subiendo (Bear)
-            
-            **Interpretación:**
-            - **Flattening:** El spread se reduce (curva se aplana)
-            - **Steepening:** El spread aumenta (curva se empina)
-            """)
-            
-            fig_guide = create_curve_explanation_chart()
-            st.plotly_chart(fig_guide, use_container_width=True)
+        fig = create_curve_behavior_chart(curve_data, "Comportamiento de la Curva", 
+                                          front_leg, back_leg, smooth_window=smooth_factor)
+        st.plotly_chart(fig, use_container_width=True)
         
-        st.markdown("---")
-        st.markdown("### ⚙️ Configurar Análisis de Curva")
+        st.markdown("### 📈 Análisis Complementario")
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         
         with col1:
-            front_leg = st.selectbox(
-                "Tenor Corto",
-                options=['DGS3MO', 'DGS2', 'DGS5'],
-                index=0,
-                format_func=lambda x: {'DGS3MO': '3 Meses', 'DGS2': '2 Años', 'DGS5': '5 Años'}[x]
+            fig = create_line_chart(
+                curve_data[[front_leg, back_leg]].dropna(how='all'),
+                "Rendimientos por Tenor", "Rendimiento (%)",
+                colors=['#06b6d4', '#ec4899']
             )
+            st.plotly_chart(fig, use_container_width=True)
         
         with col2:
-            back_leg = st.selectbox(
-                "Tenor Largo",
-                options=['DGS10', 'DGS30'],
-                index=1,
-                format_func=lambda x: {'DGS10': '10 Años', 'DGS30': '30 Años'}[x]
-            )
-        
-        with col3:
-            lookback = st.slider("Lookback (días)", 5, 30, 10)
-        
-        curve_series = {
-            front_leg: front_leg,
-            back_leg: back_leg
-        }
-        
-        with st.spinner('Analizando curva de rendimiento...'):
-            curve_data = fetch_multiple_series(curve_series, start_date, end_date)
-        
-        if curve_data is not None and not curve_data.empty:
-            curve_data = calculate_curve_metrics(curve_data, front_leg, back_leg, lookback)
-            
-            fig = create_curve_behavior_chart(curve_data, "Comportamiento de la Curva", front_leg, back_leg)
-            st.plotly_chart(fig, use_container_width=True)
-            
-            st.markdown("### 📈 Análisis Complementario")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
+            if 'curve' in curve_data.columns:
                 fig = create_line_chart(
-                    curve_data[[front_leg, back_leg]].dropna(how='all'),
-                    "Rendimientos por Tenor", "Rendimiento (%)",
-                    colors=['#06b6d4', '#ec4899']
+                    pd.DataFrame({'Spread': curve_data['curve']/100}).dropna(),
+                    "Evolución del Spread", "Spread (%)",
+                    colors=['#8b5cf6']
                 )
                 st.plotly_chart(fig, use_container_width=True)
+    
+    # ANÁLISIS BUTTERFLY
+    st.markdown("### 🦋 Análisis Butterfly - Curvatura de la Curva")
+    
+    with st.expander("ℹ️ ¿Qué es el Butterfly Spread?"):
+        info_box("Butterfly (Twist)", 
+                "El butterfly mide la curvatura de la curva de rendimientos. "
+                "Se calcula como: Butterfly = 2×Yield_Mid - Yield_Short - Yield_Long. "
+                "Valores negativos indican una curva cóncava (el medio baja más), "
+                "valores positivos indican una curva convexa (el medio sube más).")
+    
+    butterfly_series = {
+        'DGS2': 'DGS2',
+        'DGS5': 'DGS5', 
+        'DGS10': 'DGS10'
+    }
+    
+    with st.spinner('Calculando butterfly spread...'):
+        butterfly_data = fetch_multiple_series(butterfly_series, start_date, end_date)
+    
+    if butterfly_data is not None and not butterfly_data.empty:
+        butterfly = calculate_butterfly(butterfly_data, 'DGS2', 'DGS5', 'DGS10')
+        
+        if butterfly is not None:
+            butterfly_df = pd.DataFrame({'Butterfly 2-5-10': butterfly}).dropna()
             
-            with col2:
-                if 'curve' in curve_data.columns:
-                    fig = create_line_chart(
-                        pd.DataFrame({'Spread': curve_data['curve']/100}).dropna(),
-                        "Evolución del Spread", "Spread (%)",
-                        colors=['#8b5cf6']
+            if not butterfly_df.empty:
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    fig = go.Figure()
+                    
+                    # Separar valores positivos y negativos para colorear
+                    butterfly_pos = butterfly_df['Butterfly 2-5-10'].copy()
+                    butterfly_neg = butterfly_df['Butterfly 2-5-10'].copy()
+                    butterfly_pos[butterfly_pos < 0] = 0
+                    butterfly_neg[butterfly_neg > 0] = 0
+                    
+                    # Área positiva (convexa) en rojo
+                    fig.add_trace(go.Scatter(
+                        x=butterfly_df.index,
+                        y=butterfly_pos,
+                        mode='lines',
+                        line=dict(color='#ef4444', width=0),
+                        fill='tozeroy',
+                        fillcolor='rgba(239, 68, 68, 0.3)',
+                        name='Convexa',
+                        showlegend=True
+                    ))
+                    
+                    # Área negativa (cóncava) en verde
+                    fig.add_trace(go.Scatter(
+                        x=butterfly_df.index,
+                        y=butterfly_neg,
+                        mode='lines',
+                        line=dict(color='#10b981', width=0),
+                        fill='tozeroy',
+                        fillcolor='rgba(16, 185, 129, 0.3)',
+                        name='Cóncava',
+                        showlegend=True
+                    ))
+                    
+                    # Línea principal
+                    fig.add_trace(go.Scatter(
+                        x=butterfly_df.index,
+                        y=butterfly_df['Butterfly 2-5-10'],
+                        mode='lines',
+                        line=dict(color='#8b5cf6', width=2),
+                        name='Butterfly',
+                        showlegend=False
+                    ))
+                    
+                    fig.add_hline(y=0, line_dash="dash", line_color="#475569", 
+                                 annotation_text="Neutral", annotation_position="right")
+                    
+                    fig.update_layout(
+                        title=dict(text="Butterfly Spread 2-5-10 Años", 
+                                  font=dict(size=16, color='#06b6d4')),
+                        xaxis_title="Fecha",
+                        yaxis_title="Basis Points",
+                        plot_bgcolor='#0f172a',
+                        paper_bgcolor='#1e293b',
+                        font=dict(color='#e2e8f0', size=11),
+                        xaxis=dict(showgrid=True, gridcolor='#334155'),
+                        yaxis=dict(showgrid=True, gridcolor='#334155'),
+                        legend=dict(bgcolor='#1e293b', bordercolor='#334155', borderwidth=1),
+                        height=400
                     )
+                    
                     st.plotly_chart(fig, use_container_width=True)
-        
-        # ANÁLISIS BUTTERFLY
-        st.markdown("### 🦋 Análisis Butterfly - Curvatura de la Curva")
-        
-        with st.expander("ℹ️ ¿Qué es el Butterfly Spread?"):
-            info_box("Butterfly (Twist)", 
-                    "El butterfly mide la curvatura de la curva de rendimientos. "
-                    "Se calcula como: Butterfly = 2×Yield_Mid - Yield_Short - Yield_Long. "
-                    "Valores negativos indican una curva cóncava (el medio baja más), "
-                    "valores positivos indican una curva convexa (el medio sube más).")
-        
-        butterfly_series = {
-            'DGS2': 'DGS2',
-            'DGS5': 'DGS5', 
-            'DGS10': 'DGS10'
-        }
-        
-        with st.spinner('Calculando butterfly spread...'):
-            butterfly_data = fetch_multiple_series(butterfly_series, start_date, end_date)
-        
-        if butterfly_data is not None and not butterfly_data.empty:
-            butterfly = calculate_butterfly(butterfly_data, 'DGS2', 'DGS5', 'DGS10')
-            
-            if butterfly is not None:
-                butterfly_df = pd.DataFrame({'Butterfly 2-5-10': butterfly}).dropna()
                 
-                if not butterfly_df.empty:
-                    col1, col2 = st.columns([2, 1])
+                with col2:
+                    st.markdown("#### 📊 Interpretación")
                     
-                    with col1:
-                        fig = go.Figure()
-                        
-                        # Separar valores positivos y negativos para colorear
-                        butterfly_pos = butterfly_df['Butterfly 2-5-10'].copy()
-                        butterfly_neg = butterfly_df['Butterfly 2-5-10'].copy()
-                        butterfly_pos[butterfly_pos < 0] = 0
-                        butterfly_neg[butterfly_neg > 0] = 0
-                        
-                        # Área positiva (convexa) en rojo
-                        fig.add_trace(go.Scatter(
-                            x=butterfly_df.index,
-                            y=butterfly_pos,
-                            mode='lines',
-                            line=dict(color='#ef4444', width=0),
-                            fill='tozeroy',
-                            fillcolor='rgba(239, 68, 68, 0.3)',
-                            name='Convexa',
-                            showlegend=True
-                        ))
-                        
-                        # Área negativa (cóncava) en verde
-                        fig.add_trace(go.Scatter(
-                            x=butterfly_df.index,
-                            y=butterfly_neg,
-                            mode='lines',
-                            line=dict(color='#10b981', width=0),
-                            fill='tozeroy',
-                            fillcolor='rgba(16, 185, 129, 0.3)',
-                            name='Cóncava',
-                            showlegend=True
-                        ))
-                        
-                        # Línea principal
-                        fig.add_trace(go.Scatter(
-                            x=butterfly_df.index,
-                            y=butterfly_df['Butterfly 2-5-10'],
-                            mode='lines',
-                            line=dict(color='#8b5cf6', width=2),
-                            name='Butterfly',
-                            showlegend=False
-                        ))
-                        
-                        fig.add_hline(y=0, line_dash="dash", line_color="#475569", 
-                                     annotation_text="Neutral", annotation_position="right")
-                        
-                        fig.update_layout(
-                            title=dict(text="Butterfly Spread 2-5-10 Años", 
-                                      font=dict(size=16, color='#06b6d4')),
-                            xaxis_title="Fecha",
-                            yaxis_title="Basis Points",
-                            plot_bgcolor='#0f172a',
-                            paper_bgcolor='#1e293b',
-                            font=dict(color='#e2e8f0', size=11),
-                            xaxis=dict(showgrid=True, gridcolor='#334155'),
-                            yaxis=dict(showgrid=True, gridcolor='#334155'),
-                            legend=dict(bgcolor='#1e293b', bordercolor='#334155', borderwidth=1),
-                            height=400
-                        )
-                        
-                        st.plotly_chart(fig, use_container_width=True)
+                    current_butterfly = butterfly_df['Butterfly 2-5-10'].iloc[-1]
                     
-                    with col2:
-                        st.markdown("#### 📊 Interpretación")
-                        
-                        current_butterfly = butterfly_df['Butterfly 2-5-10'].iloc[-1]
-                        
-                        if current_butterfly < -20:
-                            status = "🔵 Muy Cóncava"
-                            interpretation = "El 5Y está significativamente más bajo que el promedio de 2Y y 10Y."
-                        elif current_butterfly < 0:
-                            status = "🔷 Cóncava"
-                            interpretation = "El 5Y está por debajo del promedio de 2Y y 10Y."
-                        elif current_butterfly < 20:
-                            status = "🔶 Convexa"
-                            interpretation = "El 5Y está por encima del promedio de 2Y y 10Y."
-                        else:
-                            status = "🔴 Muy Convexa"
-                            interpretation = "El 5Y está significativamente más alto."
-                        
-                        st.metric("Butterfly Actual", f"{current_butterfly:.2f} bps")
-                        st.markdown(f"**Estado:** {status}")
-                        st.markdown(f"*{interpretation}*")
+                    if current_butterfly < -20:
+                        status = "🔵 Muy Cóncava"
+                        interpretation = "El 5Y está significativamente más bajo que el promedio de 2Y y 10Y."
+                    elif current_butterfly < 0:
+                        status = "🔷 Cóncava"
+                        interpretation = "El 5Y está por debajo del promedio de 2Y y 10Y."
+                    elif current_butterfly < 20:
+                        status = "🔶 Convexa"
+                        interpretation = "El 5Y está por encima del promedio de 2Y y 10Y."
+                    else:
+                        status = "🔴 Muy Convexa"
+                        interpretation = "El 5Y está significativamente más alto."
+                    
+                    st.metric("Butterfly Actual", f"{current_butterfly:.2f} bps")
+                    st.markdown(f"**Estado:** {status}")
+                    st.markdown(f"*{interpretation}*")
+    
+    st.markdown("### 📊 Curvas Históricas Adicionales")
+    
+    other_series = {
+        'DGS2': 'DGS2',
+        'DGS10': 'DGS10',
+        'DGS30': 'DGS30',
+        'FEDFUNDS': 'FEDFUNDS'
+    }
+    
+    with st.spinner('Cargando spreads adicionales...'):
+        other_data = fetch_multiple_series(other_series, start_date, end_date)
+    
+    if other_data is not None and not other_data.empty:
+        col1, col2 = st.columns(2)
         
-        st.markdown("### 📊 Curvas Históricas Adicionales")
+        with col1:
+            fig = create_line_chart(
+                other_data[['DGS2', 'DGS10', 'DGS30']].dropna(how='all'),
+                "Principales Rendimientos del Tesoro", "Rendimiento (%)",
+                colors=['#06b6d4', '#8b5cf6', '#ec4899']
+            )
+            st.plotly_chart(fig, use_container_width=True)
         
-        other_series = {
-            'DGS2': 'DGS2',
-            'DGS10': 'DGS10',
-            'DGS30': 'DGS30',
-            'FEDFUNDS': 'FEDFUNDS'
-        }
-        
-        with st.spinner('Cargando spreads adicionales...'):
-            other_data = fetch_multiple_series(other_series, start_date, end_date)
-        
-        if other_data is not None and not other_data.empty:
-            col1, col2 = st.columns(2)
+        with col2:
+            spreads = pd.DataFrame({
+                '10Y-2Y': other_data['DGS10'] - other_data['DGS2'],
+                '30Y-10Y': other_data['DGS30'] - other_data['DGS10']
+            }).dropna()
             
-            with col1:
-                fig = create_line_chart(
-                    other_data[['DGS2', 'DGS10', 'DGS30']].dropna(how='all'),
-                    "Principales Rendimientos del Tesoro", "Rendimiento (%)",
-                    colors=['#06b6d4', '#8b5cf6', '#ec4899']
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                spreads = pd.DataFrame({
-                    '10Y-2Y': other_data['DGS10'] - other_data['DGS2'],
-                    '30Y-10Y': other_data['DGS30'] - other_data['DGS10']
-                }).dropna()
-                
-                fig = create_line_chart(
-                    spreads,
-                    "Spreads Clave", "Spread (%)",
-                    colors=['#f59e0b', '#10b981']
-                )
-                st.plotly_chart(fig, use_container_width=True)
+            fig = create_line_chart(
+                spreads,
+                "Spreads Clave", "Spread (%)",
+                colors=['#f59e0b', '#10b981']
+            )
+            st.plotly_chart(fig, use_container_width=True)
     
     # TAB 5: GUÍA
     with tab5:
