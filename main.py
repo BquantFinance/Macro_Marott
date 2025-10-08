@@ -216,16 +216,17 @@ def calculate_curve_metrics(df, front_col, back_col, lookback=10, threshold=1.0)
     return df
 
 def create_curve_behavior_chart(df, title, front_leg, back_leg):
-    """Crear gráfico de comportamiento de curva estilo Bloomberg"""
+    """Crear gráfico de comportamiento de curva estilo Bloomberg - Versión Suave"""
     fig = go.Figure()
     
+    # Use RGBA colors with transparency for better blending
     colors = {
-        'bullsteepener': '#00D000',
-        'bearsteepener': '#D00000',
-        'steepenertwist': '#FF00FF',
-        'bullflattener': '#00D0D0',
-        'bearflattener': '#D0D000',
-        'flattenertwist': '#8B008B'
+        'bullsteepener': 'rgba(0, 208, 0, 0.6)',
+        'bearsteepener': 'rgba(208, 0, 0, 0.6)',
+        'steepenertwist': 'rgba(255, 0, 255, 0.6)',
+        'bullflattener': 'rgba(0, 208, 208, 0.6)',
+        'bearflattener': 'rgba(208, 208, 0, 0.6)',
+        'flattenertwist': 'rgba(139, 0, 139, 0.6)'
     }
     
     labels = {
@@ -237,22 +238,30 @@ def create_curve_behavior_chart(df, title, front_leg, back_leg):
         'flattenertwist': 'Flattener Twist'
     }
     
+    # Apply smoothing to all indicators
+    smooth_window = 5
+    
     for indicator, color in colors.items():
         if indicator in df.columns:
+            # Smooth the data for smoother transitions
+            smoothed = df[indicator].rolling(window=smooth_window, center=True, min_periods=1).mean()
+            
             fig.add_trace(go.Bar(
                 x=df.index,
-                y=df[indicator],
+                y=smoothed,
                 name=labels[indicator],
                 marker_color=color,
-                opacity=0.95
+                marker_line_width=0  # Remove bar borders for smoother appearance
             ))
     
     if 'curve_smooth' in df.columns:
+        # Apply extra smoothing to the curve line
+        extra_smooth = df['curve_smooth'].rolling(window=7, center=True, min_periods=1).mean()
         fig.add_trace(go.Scatter(
             x=df.index,
-            y=df['curve_smooth'],
+            y=extra_smooth,
             name='Curve',
-            line=dict(color='white', width=2),
+            line=dict(color='white', width=3),
             mode='lines'
         ))
     
