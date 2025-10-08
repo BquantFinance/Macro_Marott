@@ -644,7 +644,7 @@ def info_box(title, content):
     """, unsafe_allow_html=True)
 
 def main():
-    st.markdown("<h1>📊 Análisis Económico FRED</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>Marot Strategies Dashboard</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color: #94a3b8; font-size: 1.2rem;'>Plataforma de Visualización de Datos Económicos de la Reserva Federal</p>", unsafe_allow_html=True)
     st.markdown("---")
     
