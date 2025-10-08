@@ -1123,9 +1123,6 @@ def main():
             <p style='color: #06b6d4; margin: 0; font-size: 0.95rem;'>
                 <b>⚙️ Configuración actual:</b> Lookback {lookback_text} | Sensibilidad {threshold} bps | Suavizado {smooth_factor}
             </p>
-            <p style='color: #94a3b8; margin: 5px 0 0 0; font-size: 0.85rem;'>
-                💡 <i>Para replicar Excel: Lookback 12 meses + Sensibilidad 0 bps + Suavizado 1</i>
-            </p>
         </div>
         """, unsafe_allow_html=True)
         
