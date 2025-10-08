@@ -7,8 +7,7 @@ from datetime import datetime, timedelta
 import numpy as np
 
 st.set_page_config(
-    page_title="FRED Análisis Económico",
-    page_icon="📊",
+    page_title="Análisis Económico",
     layout="wide",
     initial_sidebar_state="expanded"
 )
